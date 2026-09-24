@@ -1,0 +1,22 @@
+{
+  "name": "roundup-portfolio",
+  "private": true,
+  "packageManager": "bun@1.3.14",
+  "scripts": {
+    "dev": "bun run --cwd apps/app start",
+    "web": "bun run --cwd apps/app web",
+    "ios": "bun run --cwd apps/app ios",
+    "typecheck": "bun run --cwd apps/app typecheck",
+    "api": "bun run --cwd apps/api dev",
+    "api:migrate": "bun run --cwd apps/api migrate",
+    "test": "bun test packages/domain apps/api",
+    "wip": "python3 -m http.server 4173 --directory apps/web"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "dependencies": {
+    "@privy-io/node": "^0.35.0"
+  }
+}

@@ -1,0 +1,2 @@
+ALTER TABLE stripe_financial_connections
+  DROP CONSTRAINT IF EXISTS stripe_financial_connections_user_id_stripe_customer_id_key;

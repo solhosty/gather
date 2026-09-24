@@ -1,0 +1,19 @@
+# Dependencies and generated output
+node_modules/
+apps/*/node_modules/
+apps/*/dist/
+
+# Local environment files. Commit only the documented template.
+.env
+.env.local
+.env.*.local
+apps/*/.env
+apps/*/.env.local
+apps/*/.env.*.local
+!.env.example
+!apps/*/.env.example
+
+# Local tooling
+.expo/
+.keys/
+.DS_Store

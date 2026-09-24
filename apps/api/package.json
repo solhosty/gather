@@ -1,0 +1,17 @@
+{
+  "name": "@roundup/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@privy-io/node": "^0.35.0",
+    "@roundup/domain": "workspace:*",
+    "dotenv": "^18.0.3"
+  },
+  "scripts": {
+    "dev": "bun --watch src/server.ts",
+    "start": "bun src/server.ts",
+    "migrate": "bun src/migrate.ts",
+    "test": "bun test"
+  }
+}
