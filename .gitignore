@@ -17,3 +17,8 @@ apps/*/.env.*.local
 .expo/
 .keys/
 .DS_Store
+
+# Accidental empty files at the repository root
+/data-
+/id
+/object-
