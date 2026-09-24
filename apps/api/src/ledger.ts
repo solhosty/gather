@@ -46,12 +46,24 @@ export async function readLedger(sql: Database, userId: string) {
     SELECT COALESCE(SUM(amount_cents) FILTER (WHERE state = 'pending'), 0)::integer AS pending_cents
     FROM roundup_entries WHERE user_id = ${userId}
   `;
-  const entries = await sql<{ id: string; amount_cents: number; state: string; created_at: string; source: string; external_event_id: string }[]>`
-    SELECT entry.id, entry.amount_cents, entry.state, entry.created_at, source.source, source.external_event_id
+  const entries = await sql<{
+    id: string;
+    amount_cents: number;
+    state: string;
+    created_at: string;
+    source: string;
+    external_event_id: string;
+    purchase_cents: number;
+    occurred_at: string;
+    description: string | null;
+  }[]>`
+    SELECT entry.id, entry.amount_cents, entry.state, entry.created_at, source.source, source.external_event_id,
+      source.amount_cents AS purchase_cents, source.occurred_at, stripe.description
     FROM roundup_entries AS entry
     JOIN source_events AS source ON source.id = entry.source_event_id
+    LEFT JOIN stripe_financial_transactions AS stripe ON stripe.source_event_id = source.id
     WHERE entry.user_id = ${userId}
-    ORDER BY entry.created_at DESC
+    ORDER BY source.occurred_at DESC, entry.created_at DESC
   `;
   return {
     pendingCents: total.pending_cents,
@@ -62,6 +74,9 @@ export async function readLedger(sql: Database, userId: string) {
       createdAt: entry.created_at,
       source: entry.source,
       eventId: entry.external_event_id,
+      purchaseCents: entry.purchase_cents,
+      occurredAt: entry.occurred_at,
+      description: entry.description,
     })),
   };
 }

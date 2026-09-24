@@ -4,7 +4,7 @@ type FundingAttempt = { id: string; amountCents: number; walletAddress: string; 
 type Funding = { availableTestUsdcCents: number; attempts: FundingAttempt[] };
 const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8787';
 
-export function useFunding(enabled: boolean, walletAddress: string | undefined, getAccessToken: () => Promise<string | undefined>) {
+export function useFunding(enabled: boolean, walletAddress: string | undefined, getAccessToken: () => Promise<string | null | undefined>) {
   const [funding, setFunding] = useState<Funding>();
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);

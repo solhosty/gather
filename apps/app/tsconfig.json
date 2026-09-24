@@ -4,5 +4,6 @@
     "strict": true,
     "moduleResolution": "bundler",
     "moduleSuffixes": [".native", ".web", ""]
-  }
+  },
+  "exclude": ["node_modules", "**/*.test.ts"]
 }

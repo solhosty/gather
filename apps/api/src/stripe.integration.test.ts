@@ -102,5 +102,12 @@ maybeDescribe('Stripe Financial Connections webhook integration', () => {
     expect(ledger.entries).toHaveLength(2);
     const [wholeDollar] = await sql<{ eligibility: string; source_event_id: string | null }[]>`SELECT eligibility, source_event_id FROM stripe_financial_transactions WHERE stripe_transaction_id = 'fctxn_m4_whole_dollar'`;
     expect(wholeDollar).toEqual({ eligibility: 'eligible', source_event_id: expect.any(String) });
+
+    const coffee = ledger.entries.find((entry: { eventId: string }) => entry.eventId === 'fctxn_m4_coffee');
+    expect(coffee).toMatchObject({ description: 'Coffee Shop', purchaseCents: 460, amountCents: 40, occurredAt: expect.any(String) });
+    const connections = await (await app.fetch(new Request('http://roundup.test/v1/stripe/financial-connections', { headers: auth }))).json();
+    expect(connections.bankConnections).toHaveLength(1);
+    expect(connections.bankConnections[0]).toMatchObject({ transactionCount: 7, eligibleCount: 3 });
+    expect(JSON.stringify(connections)).not.toContain('fca_m4_test');
   });
 });

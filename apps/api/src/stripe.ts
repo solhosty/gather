@@ -179,6 +179,27 @@ export async function completeFinancialConnection(sql: Database, userId: string,
   return { connected: true, accountId: account.id };
 }
 
+export async function readFinancialConnections(sql: Database, userId: string) {
+  const rows = await sql<{ id: string; updated_at: string; transaction_count: number; eligible_count: number }[]>`
+    SELECT connection.id, connection.updated_at,
+      COUNT(transaction.stripe_transaction_id)::integer AS transaction_count,
+      (COUNT(transaction.stripe_transaction_id) FILTER (WHERE transaction.eligibility = 'eligible'))::integer AS eligible_count
+    FROM stripe_financial_connections AS connection
+    LEFT JOIN stripe_financial_transactions AS transaction ON transaction.connection_id = connection.id
+    WHERE connection.user_id = ${userId} AND connection.state = 'connected'
+    GROUP BY connection.id
+    ORDER BY connection.updated_at DESC
+  `;
+  return {
+    bankConnections: rows.map((row) => ({
+      id: row.id,
+      connectedAt: row.updated_at,
+      transactionCount: row.transaction_count,
+      eligibleCount: row.eligible_count,
+    })),
+  };
+}
+
 function hex(bytes: Uint8Array) { return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(''); }
 function equal(a: string, b: string) { if (a.length !== b.length) return false; let result = 0; for (let i = 0; i < a.length; i += 1) result |= a.charCodeAt(i) ^ b.charCodeAt(i); return result === 0; }
 

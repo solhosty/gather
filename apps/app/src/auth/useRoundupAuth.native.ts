@@ -21,9 +21,9 @@ export function useRoundupAuth() {
   const solanaWallet = useEmbeddedSolanaWallet();
   const linkedAccounts = getLinkedAccounts(user);
   const oauthProvider = linkedAccounts.some((account) => account.type === 'google_oauth')
-    ? 'google'
+    ? 'google' as const
     : linkedAccounts.some((account) => account.type === 'apple_oauth')
-      ? 'apple'
+      ? 'apple' as const
       : undefined;
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export function useRoundupAuth() {
 
   return {
     authError: error,
-    connectExternalWallet: undefined,
+    connectExternalWallet: undefined as (() => void) | undefined,
     getAccessToken,
     isReady,
     login: (provider: Provider) => login({ provider }),

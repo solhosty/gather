@@ -7,6 +7,7 @@
     "web": "bun run --cwd apps/app web",
     "ios": "bun run --cwd apps/app ios",
     "typecheck": "bun run --cwd apps/app typecheck",
+    "typecheck:ui": "bun run --cwd packages/ui typecheck",
     "api": "bun run --cwd apps/api dev",
     "api:migrate": "bun run --cwd apps/api migrate",
     "test": "bun test packages/domain apps/api",

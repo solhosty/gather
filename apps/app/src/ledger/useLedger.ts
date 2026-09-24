@@ -1,9 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
 
-type Ledger = { pendingCents: number; entries: { id: string; amountCents: number; state: string; createdAt: string; source: string; eventId: string }[] };
+export type LedgerEntry = {
+  id: string;
+  amountCents: number;
+  state: 'pending' | 'invested' | 'void';
+  createdAt: string;
+  source: string;
+  eventId: string;
+  purchaseCents: number;
+  occurredAt: string;
+  description: string | null;
+};
+export type Ledger = { pendingCents: number; entries: LedgerEntry[] };
 const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8787';
 
-export function useLedger(enabled: boolean, getAccessToken: () => Promise<string | undefined>) {
+export function useLedger(enabled: boolean, getAccessToken: () => Promise<string | null | undefined>) {
   const [ledger, setLedger] = useState<Ledger>();
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
@@ -36,5 +47,5 @@ export function useLedger(enabled: boolean, getAccessToken: () => Promise<string
       setError(cause instanceof Error ? cause.message : 'The test spend was not accepted by the durable ledger.');
     } finally { setLoading(false); }
   }, [getAccessToken, load]);
-  return { createTestSpend, error, ledger, loading };
+  return { createTestSpend, error, ledger, loading, refresh: load };
 }

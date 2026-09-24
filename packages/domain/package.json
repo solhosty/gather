@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/ledger.ts"
+    ".": "./src/ledger.ts",
+    "./policy": "./src/policy.ts"
   },
   "scripts": {
     "test": "bun test"

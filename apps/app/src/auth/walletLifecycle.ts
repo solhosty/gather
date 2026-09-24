@@ -16,7 +16,7 @@ export type PrivyUser = {
   linkedAccounts: LinkedAccount[];
 };
 
-function isEmbeddedPrivyWallet(wallet: WalletAccount | undefined) {
+function isEmbeddedPrivyWallet<T extends { walletClientType?: string }>(wallet: T | undefined): wallet is T {
   return wallet?.walletClientType === 'privy' || wallet?.walletClientType === 'privy-v2';
 }
 

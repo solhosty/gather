@@ -1,15 +1,16 @@
 import { bearerToken, createPrivyTokenVerifier, type TokenVerifier } from './auth';
 import { openDatabase, upsertUser, type Database } from './db';
 import { readLedger, recordSourceEvent } from './ledger';
-import { completeFinancialConnection, createFinancialConnection, createStripeAdapter, receiveStripeWebhook, verifyStripeSignature, type StripeAdapter } from './stripe';
+import { completeFinancialConnection, createFinancialConnection, createStripeAdapter, readFinancialConnections, receiveStripeWebhook, verifyStripeSignature, type StripeAdapter } from './stripe';
 import { issueWalletChallenge, verifyWalletChallenge } from './walletOwnership';
+import { exportAccountData, readPolicy, readProfile, savePolicy, updateProfile } from './account';
 import { confirmFundingAttempt, createFundingAttempt, readFunding, reconcileFundingAttempt } from './funding';
 
 type AppOptions = { sql?: Database; verifyToken?: TokenVerifier; stripe?: StripeAdapter; webhookSecret?: string };
 
 const corsHeaders = {
   'access-control-allow-headers': 'authorization, content-type, idempotency-key',
-  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-methods': 'GET, POST, PUT, OPTIONS',
   'access-control-allow-origin': process.env.EXPO_PUBLIC_WEB_URL ?? 'http://localhost:8081',
   vary: 'Origin',
 };
@@ -54,6 +55,12 @@ export function createApp({ sql = openDatabase(), verifyToken = createPrivyToken
         const user = await requestUser(request, sql, verifyToken);
         if (request.method === 'GET' && url.pathname === '/v1/ledger') return json(await readLedger(sql, user.id));
         if (request.method === 'GET' && url.pathname === '/v1/funding') return json(await readFunding(sql, user.id));
+        if (request.method === 'GET' && url.pathname === '/v1/stripe/financial-connections') return json(await readFinancialConnections(sql, user.id));
+        if (request.method === 'GET' && url.pathname === '/v1/profile') return json(await readProfile(sql, user.id));
+        if (request.method === 'PUT' && url.pathname === '/v1/profile') return json(await updateProfile(sql, user.id, await request.json()));
+        if (request.method === 'GET' && url.pathname === '/v1/policy') return json(await readPolicy(sql, user.id));
+        if (request.method === 'POST' && url.pathname === '/v1/policy') return json(await savePolicy(sql, user.id, await request.json()), 201);
+        if (request.method === 'GET' && url.pathname === '/v1/export') return json(await exportAccountData(sql, user.id));
         if (request.method === 'POST' && url.pathname === '/v1/funding/attempts') {
           const body = await request.json();
           return json(await createFundingAttempt(sql, user.id, requireString(body.walletAddress, 'walletAddress'), requirePositiveCents(body.amountCents), stripe), 201);

@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8787';
 const publishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
 
-export function useFinancialConnection(getAccessToken: () => Promise<string | undefined>) {
+export function useFinancialConnection(getAccessToken: () => Promise<string | null | undefined>) {
   const [state, setState] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
   const [error, setError] = useState<string>();
   const connect = useCallback(async () => {

@@ -311,7 +311,7 @@ or execution milestone.
 
 ## Milestone 5 — Test funding boundary
 
-**Status:** In progress — server-backed Stripe test-payment and reconciliation implementation is complete; provider-backed and rendered acceptance runs remain required
+**Status:** Complete — real Stripe test-mode payment, signed webhook reconciliation, and persisted web/iOS funding states are verified
 
 **Scope**
 
@@ -363,9 +363,34 @@ it must not imply that Stripe itself mints USDC.
   test-USDC success state. This action creates a durable test-mode PaymentIntent
   and a test-USDC credit for the signed-in embedded wallet.
 
+**Verification record — 2026-09-24 (19:47 UTC)**
+
+- Passed: `bun test packages/domain apps/api` re-run against local PostgreSQL
+  (eight tests, 43 assertions, 0 failures).
+- Passed: the user-account funding attempt was confirmed. PostgreSQL holds one
+  `reconciled` $5.00 funding attempt for the embedded wallet `CpWdi…Lqj7`, one
+  `available` 500-cent `test-usdc-ledger-v1` credit, and no roundup entries
+  created after the attempt. Stripe reports the PaymentIntent (`pi_3UJILt…`)
+  as `livemode: false`, `succeeded`, $5.00 USD. The API audit table recorded
+  its signed `payment_intent.succeeded` webhook as processed with no error.
+- Passed (iOS): after terminating and relaunching the app in the iPhone 17 Pro
+  (iOS 26.5) simulator build, the same embedded wallet session was restored
+  and the funding card showed `Test USDC available: $5.00` and `Latest
+  funding: Reconciled · No roundup entry created`.
+- Passed (web): signed in with Google on the served app at
+  `http://localhost:8081` as the same embedded wallet, then did a full page
+  reload. The funding card showed the same persisted `$5.00` test-USDC
+  balance and reconciled state. Checked at an iPhone-sized viewport (390×844)
+  and a desktop viewport (1440×900; a centered 760px column with no
+  horizontal overflow). The shared disclaimer states that no real stocks,
+  USDC, banking data, or securities trades occur.
+- Limitation: the test-USDC credit is a server-side ledger adapter
+  (`test-usdc-ledger-v1`), not an on-chain devnet SPL transfer. On-chain
+  delivery belongs to Milestone 7's Solana devnet adapter.
+
 ## Milestone 6 — Product UI parity
 
-**Status:** Not started
+**Status:** In progress — web product UI is implemented and verified; iOS simulator and wide-desktop screenshot evidence are still outstanding
 
 **Scope**
 
@@ -399,6 +424,43 @@ it must not imply that Stripe itself mints USDC.
 - The component layer has reusable tokens/primitives for repeated product
   surfaces, and focused checks plus web export/lint pass. Record visual
   comparison evidence and remaining platform differences here.
+
+**Working evidence — 2026-09-24**
+
+- Shared design layer per ADR 0001: semantic tokens in `packages/tokens` and
+  copy-owned React Native primitives (buttons, cards, badges, sheets, states,
+  inputs, chips, segmented control, slider, donut, sparkline, nav icons) in
+  `packages/ui`. Metro resolves React/React Native for workspace packages
+  from the app so there is one renderer instance.
+- Routes: `(app)` group with Home, Activity, Portfolio, Plan, plus
+  Onboarding and Settings (wallet security). Expo Router headless tabs give a
+  fixed sidebar at ≥760px and bottom tabs below. All WIP dialogs run through
+  one modal host that swaps content (avoids chained-modal failures on iOS).
+- Data is live, not fixture: enriched ledger entries (merchant, purchase
+  amount, posted time), a safe Financial Connections summary, test-USDC
+  funding, and new persisted profile (`GET/PUT /v1/profile`), versioned
+  policy drafts (`GET/POST /v1/policy`, validated by
+  `@roundup/domain/policy`, `autoInvest` forced off), and `GET /v1/export`.
+  Migration `005_profile_and_policy_drafts.sql` applied.
+- Marked "Not set up yet" rather than faked: portfolio value/performance,
+  devnet holdings and prices, quotes and trades, swaps, external-wallet
+  tracking, received-token balances, delegated-signer auto-invest, stock-idea
+  performance, and account deletion.
+- Passed: `bun test packages/domain apps/api` (13 tests, 70 assertions),
+  `bun test` in `apps/app` (4 tests), `bun run typecheck` (app; now runs tsc
+  with a larger stack because Privy's declarations overflow the default),
+  `bun run typecheck:ui`, `bunx expo lint`, and
+  `bunx expo export --platform web` (all routes exported).
+- Passed rendered web checks on the signed-in account at 390×844 and 768px:
+  Home, Activity, Portfolio, Plan, Onboarding, and the settings dialog match
+  the WIP hierarchy with live values ($0.40 waiting, $5.00 test USDC, 3
+  Stripe test sources). Functional run: added Apple to the mix, set 50% with
+  the slider, saved as plan version 1, reloaded, and saw the saved mix on
+  Plan and as a 50% zero-holding target on Portfolio; list/donut toggle works.
+- Remaining: the embedded browser pane captures only a ~768px surface, so
+  1440×900 desktop screenshots still need recording. iOS simulator check is
+  blocked on this machine (`xcrun simctl` unavailable); rebuild the dev client
+  with the new Metro config and inspect every tab and dialog on iPhone.
 
 ## Milestone 7 — Solana devnet assets and execution adapter
 
