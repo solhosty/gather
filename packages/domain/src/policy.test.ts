@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { furthestBelowTarget, suggestedLimits, validatePolicy } from './policy';
 
-const base = { ...suggestedLimits, mix: [{ symbol: 'AAPL', percent: 50 }, { symbol: 'MSFT', percent: 30 }] };
+const base = { ...suggestedLimits, mix: [{ symbol: 'AAPL', percent: 50 }, { symbol: 'MSFT', percent: 30 }], rounding: { kind: 'multiplier' as const, multiplier: 1 as const }, expiresAt: '2027-09-25T00:00:00.000Z', paused: false, buyWhatsReady: false };
 
 describe('allocation policy drafts', () => {
   test('accepts a partial mix and always stores auto-invest as off', () => {
@@ -20,6 +20,11 @@ describe('allocation policy drafts', () => {
     expect(() => validatePolicy({ ...base, dailyCapCents: 3000, weeklyCapCents: 2000 })).toThrow('weekly limit');
     expect(() => validatePolicy({ ...base, maxSlippageBps: 0 })).toThrow('slippage');
     expect(() => validatePolicy({ ...base, maxSlippageBps: 301 })).toThrow('slippage');
+  });
+
+  test('requires a bounded rounding rule and a future expiry', () => {
+    expect(() => validatePolicy({ ...base, rounding: { kind: 'fixed', cents: 999 } })).toThrow('rounding rule');
+    expect(() => validatePolicy({ ...base, expiresAt: '2020-01-01T00:00:00.000Z' })).toThrow('future date');
   });
 
   test('suggests the leg furthest below its target weight', () => {

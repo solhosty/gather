@@ -15,16 +15,23 @@ export type MixLeg = { symbol: MirrorSymbol; percent: number };
 
 export type AllocationPolicy = {
   mix: MixLeg[];
+  rounding: { kind: 'multiplier'; multiplier: 1 | 2 | 3 } | { kind: 'fixed'; cents: number };
   minimumCents: number;
+  perEventCapCents: number;
   dailyCapCents: number;
   weeklyCapCents: number;
   maxSlippageBps: number;
-  // Automatic execution needs delegated-signer consent (Milestone 8). A saved
-  // policy is a draft plan until then and never authorizes a purchase.
+  expiresAt: string;
+  paused: boolean;
+  // This is an explicit manual-only preference. It never relaxes automatic
+  // execution's strict full-mix requirement.
+  buyWhatsReady: boolean;
+  // A saved policy remains a draft until a matching delegated-wallet consent
+  // is recorded by the server.
   autoInvest: false;
 };
 
-export const suggestedLimits = { minimumCents: 1000, dailyCapCents: 800, weeklyCapCents: 2500, maxSlippageBps: 50 } as const;
+export const suggestedLimits = { minimumCents: 1000, perEventCapCents: 500, dailyCapCents: 800, weeklyCapCents: 2500, maxSlippageBps: 50 } as const;
 
 export class PolicyError extends Error {}
 
@@ -51,20 +58,44 @@ export function validatePolicy(input: unknown): AllocationPolicy {
   });
   if (allocatedPercent(mix) > 100) throw new PolicyError('The target mix cannot exceed 100%.');
 
-  const cents = (key: 'minimumCents' | 'dailyCapCents' | 'weeklyCapCents') => {
+  const cents = (key: 'minimumCents' | 'perEventCapCents' | 'dailyCapCents' | 'weeklyCapCents') => {
     const value = candidate[key];
     try { assertCents(value as number, key); } catch { throw new PolicyError(`${key} must be a non-negative whole number of cents.`); }
     if ((value as number) < 100) throw new PolicyError(`${key} must be at least $1.00.`);
     return value as number;
   };
   const minimumCents = cents('minimumCents');
+  const perEventCapCents = cents('perEventCapCents');
   const dailyCapCents = cents('dailyCapCents');
   const weeklyCapCents = cents('weeklyCapCents');
   if (weeklyCapCents < dailyCapCents) throw new PolicyError('The weekly limit cannot be lower than the daily limit.');
   const maxSlippageBps = candidate.maxSlippageBps;
   if (!Number.isSafeInteger(maxSlippageBps) || (maxSlippageBps as number) < 1 || (maxSlippageBps as number) > 300) throw new PolicyError('Maximum slippage must be between 0.01% and 3%.');
+  const rounding = candidate.rounding;
+  if (!rounding || typeof rounding !== 'object') throw new PolicyError('A rounding rule is required.');
+  const rule = rounding as Record<string, unknown>;
+  const normalizedRounding = rule.kind === 'multiplier' && (rule.multiplier === 1 || rule.multiplier === 2 || rule.multiplier === 3)
+    ? { kind: 'multiplier' as const, multiplier: rule.multiplier as 1 | 2 | 3 }
+    : rule.kind === 'fixed' && Number.isSafeInteger(rule.cents) && (rule.cents as number) >= 1 && (rule.cents as number) <= perEventCapCents
+      ? { kind: 'fixed' as const, cents: rule.cents as number }
+      : undefined;
+  if (!normalizedRounding) throw new PolicyError('Choose a supported rounding rule within the per-event cap.');
+  const expiresAt = typeof candidate.expiresAt === 'string' ? new Date(candidate.expiresAt) : undefined;
+  if (!expiresAt || Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) throw new PolicyError('Policy expiry must be a future date.');
+  if (typeof candidate.paused !== 'boolean' || typeof candidate.buyWhatsReady !== 'boolean') throw new PolicyError('Policy pause and manual-buy preferences are required.');
 
-  return { mix, minimumCents, dailyCapCents, weeklyCapCents, maxSlippageBps: maxSlippageBps as number, autoInvest: false };
+  return { mix, rounding: normalizedRounding, minimumCents, perEventCapCents, dailyCapCents, weeklyCapCents, maxSlippageBps: maxSlippageBps as number, expiresAt: expiresAt.toISOString(), paused: candidate.paused, buyWhatsReady: candidate.buyWhatsReady, autoInvest: false };
+}
+
+export function expandsAuthority(previous: AllocationPolicy, next: AllocationPolicy) {
+  const previousAssets = new Set(previous.mix.filter((leg) => leg.percent > 0).map((leg) => leg.symbol));
+  const broaderAssets = next.mix.some((leg) => leg.percent > 0 && !previousAssets.has(leg.symbol));
+  return broaderAssets
+    || next.dailyCapCents > previous.dailyCapCents
+    || next.weeklyCapCents > previous.weeklyCapCents
+    || next.perEventCapCents > previous.perEventCapCents
+    || next.maxSlippageBps > previous.maxSlippageBps
+    || new Date(next.expiresAt).getTime() > new Date(previous.expiresAt).getTime();
 }
 
 // With no holdings yet, the leg furthest below target is simply the largest

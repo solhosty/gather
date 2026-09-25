@@ -3,9 +3,9 @@ import { openDatabase, upsertUser, type Database } from './db';
 import { readLedger, recordSourceEvent } from './ledger';
 import { completeFinancialConnection, createFinancialConnection, createStripeAdapter, readFinancialConnections, receiveStripeWebhook, verifyStripeSignature, type StripeAdapter } from './stripe';
 import { issueWalletChallenge, verifyWalletChallenge } from './walletOwnership';
-import { exportAccountData, readPolicy, readProfile, savePolicy, updateProfile } from './account';
+import { activatePolicy, exportAccountData, pausePolicy, readPolicy, readProfile, savePolicy, updateProfile } from './account';
 import { confirmFundingAttempt, createFundingAttempt, readFunding, reconcileFundingAttempt } from './funding';
-import { createCliDevnetAdapter, createExecution, readExecutions, reconcileExecution, type DevnetExecutionAdapter } from './execution';
+import { createAutomaticExecution, createCliDevnetAdapter, createExecution, readExecutions, reconcileExecution, type DevnetExecutionAdapter } from './execution';
 import { createTwelveDataAdapter, readPortfolioHistory, readReferenceMarketPrices, type MarketDataAdapter, type PortfolioHistoryRange } from './marketData';
 
 type AppOptions = { sql?: Database; verifyToken?: TokenVerifier; stripe?: StripeAdapter; webhookSecret?: string; execution?: DevnetExecutionAdapter; marketData?: MarketDataAdapter };
@@ -52,7 +52,16 @@ export function createApp({ sql = openDatabase(), verifyToken = createPrivyToken
         if (request.method === 'POST' && url.pathname === '/v1/stripe/webhooks') {
           const payload = await request.text();
           if (!await verifyStripeSignature(payload, request.headers.get('stripe-signature'), webhookSecret)) return json({ error: 'Invalid Stripe webhook signature.' }, 400);
-          return json(await receiveStripeWebhook(sql, payload, stripe));
+          const received = await receiveStripeWebhook(sql, payload, stripe);
+          const objectId = (JSON.parse(payload) as { data?: { object?: { id?: string } } }).data?.object?.id;
+          const [owner] = objectId ? await sql<{ user_id: string }[]>`
+            SELECT user_id FROM stripe_financial_connections WHERE stripe_account_id = ${objectId}
+            UNION ALL
+            SELECT user_id FROM funding_attempts WHERE stripe_payment_intent_id = ${objectId}
+            LIMIT 1
+          ` : [];
+          const automatic = owner ? await createAutomaticExecution(sql, owner.user_id, execution).catch(() => undefined) : undefined;
+          return json({ ...received, automatic });
         }
         const user = await requestUser(request, sql, verifyToken);
         if (request.method === 'GET' && url.pathname === '/v1/ledger') return json(await readLedger(sql, user.id));
@@ -69,6 +78,11 @@ export function createApp({ sql = openDatabase(), verifyToken = createPrivyToken
         if (request.method === 'PUT' && url.pathname === '/v1/profile') return json(await updateProfile(sql, user.id, await request.json()));
         if (request.method === 'GET' && url.pathname === '/v1/policy') return json(await readPolicy(sql, user.id));
         if (request.method === 'POST' && url.pathname === '/v1/policy') return json(await savePolicy(sql, user.id, await request.json()), 201);
+        if (request.method === 'POST' && url.pathname === '/v1/policy/activate') {
+          const body = await request.json();
+          return json(await activatePolicy(sql, user.id, requireString(body.walletAddress, 'walletAddress')));
+        }
+        if (request.method === 'POST' && url.pathname === '/v1/policy/pause') return json(await pausePolicy(sql, user.id));
         if (request.method === 'GET' && url.pathname === '/v1/export') return json(await exportAccountData(sql, user.id));
         if (request.method === 'POST' && url.pathname === '/v1/funding/attempts') {
           const body = await request.json();
@@ -101,7 +115,8 @@ export function createApp({ sql = openDatabase(), verifyToken = createPrivyToken
             amountCents: requirePositiveCents(body.amountCents),
             occurredAt: requireString(body.occurredAt, 'occurredAt'),
           }, idempotencyKey);
-          return json(result, result.created ? 201 : 200);
+          const automatic = result.created ? await createAutomaticExecution(sql, user.id, execution).catch((error) => ({ state: 'blocked', reason: error instanceof Error ? error.message : 'Automatic execution could not start.' })) : undefined;
+          return json({ ...result, automatic }, result.created ? 201 : 200);
         }
         if (request.method === 'POST' && url.pathname === '/v1/wallet-challenges') {
           const body = await request.json();

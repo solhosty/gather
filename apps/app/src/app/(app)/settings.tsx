@@ -11,15 +11,15 @@ export default function SettingsScreen() {
   const { open } = useDialogs();
 
   return (
-    <Screen kicker="Settings" title="Wallet security" intro="Manage your embedded Roundup wallet." showSettings={false}>
-      <Button label="← Back to Roundup" variant="text" onPress={() => (router.canGoBack() ? router.back() : router.navigate('/'))} style={styles.back} />
+    <Screen kicker="Settings" title="Wallet security" intro="Manage your embedded Gather wallet." showSettings={false}>
+      <Button label="← Back to Gather" variant="text" onPress={() => (router.canGoBack() ? router.back() : router.navigate('/'))} style={styles.back} />
       <View style={styles.stack}>
         <Card>
           <View style={styles.row}>
             <Text variant="eyebrow">Embedded Solana wallet</Text>
           </View>
           <Text variant="mono" style={styles.address} selectable>{auth.walletAddress ?? 'Creating securely…'}</Text>
-          <Text variant="caption" style={styles.note}>This is your Roundup wallet. It is separate from any external wallet you connect for read-only tracking.</Text>
+          <Text variant="caption" style={styles.note}>This is your Gather wallet. It is separate from any external wallet you connect for read-only tracking.</Text>
           <Button label="Show receive address" variant="secondary" disabled={!auth.walletAddress} onPress={() => open('receive')} style={styles.action} />
         </Card>
         <WalletExport address={auth.walletAddress} provider={auth.oauthProvider} />

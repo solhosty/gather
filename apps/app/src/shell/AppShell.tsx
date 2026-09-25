@@ -1,5 +1,5 @@
 import { forwardRef, type ComponentProps } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { TabList, TabSlot, TabTrigger, Tabs, type TabTriggerSlotProps } from 'expo-router/ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, Text, color, font, layout, raised, useLayout, type IconName } from '@roundup/ui';
@@ -46,8 +46,10 @@ function SidebarBrand() {
 export function Brand() {
   return (
     <View style={styles.brand}>
-      <View style={styles.brandMark}><Text style={styles.brandMarkText}>R</Text></View>
-      <Text style={styles.brandName}>roundup</Text>
+      <View style={styles.brandMark} accessibilityLabel="Gather">
+        <Image source={require('../../assets/gather-mark.png')} style={styles.brandMarkImage} />
+      </View>
+      <Text style={styles.brandName}>gather</Text>
     </View>
   );
 }
@@ -85,7 +87,7 @@ function ProfileButton() {
       onPress={() => open('settings')}
       style={({ hovered }: { pressed: boolean; hovered?: boolean }) => [styles.profile, hovered && styles.navHover]}
     >
-      <View style={styles.avatar}><Text style={styles.avatarText}>{(name ?? 'R').charAt(0).toUpperCase()}</Text></View>
+      <View style={styles.avatar}><Text style={styles.avatarText}>{(name ?? 'G').charAt(0).toUpperCase()}</Text></View>
       <View style={styles.profileCopy}>
         <Text style={styles.profileName} numberOfLines={1}>{name ?? 'Your account'}</Text>
         <Text style={styles.profileDetail}>{auth.walletAddress ? '1 wallet · manage' : 'Creating wallet…'}</Text>
@@ -105,8 +107,8 @@ const styles = StyleSheet.create({
   bottomBar: { backgroundColor: color.sidebar, borderTopColor: color.line, borderTopWidth: 1.5, flexDirection: 'row', gap: 4, paddingHorizontal: 14, paddingTop: 7 },
   brandBlock: { marginBottom: 6 },
   brand: { alignItems: 'center', flexDirection: 'row', gap: 7 },
-  brandMark: { alignItems: 'center', backgroundColor: color.accent, borderColor: '#123C2B', borderRadius: 8, borderWidth: 1.5, boxShadow: '2px 2px 0px #B8D1C3', height: 27, justifyContent: 'center', transform: [{ rotate: '-1deg' }], width: 27 },
-  brandMarkText: { color: color.onAccent, fontFamily: font.display, fontSize: 14, fontWeight: '700' },
+  brandMark: { alignItems: 'center', backgroundColor: '#E5F0E8', borderColor: '#9CB9AA', borderRadius: 9, borderWidth: 1.5, boxShadow: '2px 2px 0px #B8D1C3', height: 29, justifyContent: 'center', width: 29 },
+  brandMarkImage: { height: 22, width: 22 },
   brandName: { color: color.ink, fontFamily: font.display, fontSize: 22, fontWeight: '700', letterSpacing: -0.9 },
   navItem: { alignItems: 'center', borderColor: 'transparent', borderRadius: 9, borderWidth: 1.5, flexDirection: 'row', gap: 11, paddingHorizontal: 12, paddingVertical: 9 },
   tabItem: { alignItems: 'center', borderColor: 'transparent', borderRadius: 11, borderWidth: 1.5, flex: 1, justifyContent: 'center', paddingVertical: 9 },

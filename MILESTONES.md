@@ -641,7 +641,7 @@ it must not imply that Stripe itself mints USDC.
 
 ## Milestone 8 — Policy and automatic execution
 
-**Status:** Not started
+**Status:** Complete — versioned policy controls, constrained Privy signer consent, devnet allocation, and persisted web/iOS state transitions are verified
 
 **Scope**
 
@@ -666,31 +666,86 @@ it must not imply that Stripe itself mints USDC.
   eligible devnet batch, and visually verifies allowed, blocked, paused, and
   re-consent states on web and iOS.
 
+**Evidence record — 2026-09-25**
+
+- Added migration `010_automatic_execution_policy.sql`: immutable policy
+  versions now carry rounding, per-event/daily/weekly boundaries, expiry,
+  pause/manual preference, delegated-wallet consent state, and the exact
+  roundup entries consumed by a purchase batch.
+- Plan now exposes the actual controls: multiplier or fixed-extra rounding,
+  per-event/minimum/daily/weekly boundaries, slippage, 30/90/365-day expiry,
+  manual-only “Buy what’s ready,” setup, and immediate Pause. The Home status
+  differentiates awaiting consent, active, and paused policy states.
+- The policy gate blocks absent/paused/expired consent, incomplete mixes,
+  insufficient funding, minimum and per-event boundaries, daily/weekly caps,
+  and missing target mirrors. It retains strict full-mix behavior; no
+  automatic "buy what's ready" path exists. A reconciled automatic receipt
+  atomically changes only its linked pending entries to `invested`.
+- Passed: `bun test packages/domain apps/api` against project-local PostgreSQL:
+  21 pass, 0 fail, 104 expectations. The policy and execution cases prove cap,
+  expiry, pause, strict full-mix, uncertain-submission reconciliation, and
+  idempotent receipt behavior.
+- Passed: `bun run typecheck`, `bun run lint`, and `bunx expo export --platform
+  web` in `apps/app`; `git diff --check` also passes. Expo reports only known
+  package-export warnings during static export.
+- Real Privy acceptance: created the server authorization key locally (server
+  secret is not committed) and a Dashboard signer policy restricted to Solana
+  `signMessage` calls whose content begins `Stocklana devnet authorization`.
+  It has no transaction or transfer permission. User-authorized consent was
+  completed on served web and on the iPhone 17 Pro (iOS 26.5) development
+  build. Higher daily-cap changes correctly forced a fresh signer grant.
+- Real devnet acceptance: signed-in web funding reached $14.60 test credit;
+  nine eligible posted test purchases triggered a $10.00 full-mix automatic
+  batch. The real adapter receipt `ad24…b6d` reconciled as `confirmed`, and
+  the refreshed Portfolio rendered 500 no-value devnet mirror units each for
+  AAPL and MSFT with Solana explorer links. The allocator mints project-owned,
+  no-value devnet inventory; it does not move user-held assets.
+- Rendered and persisted states: web showed active, required re-consent after
+  a policy expansion, paused, and re-authorized states. The rebuilt iOS app
+  showed the same active → paused (fresh approval required) → scoped approval
+  → active sequence. A live posted test purchase below the $10.00 minimum
+  rendered `Automatic purchase pending — Roundups have not reached the policy
+  minimum.` on both served web and iOS; the message remained after a fresh web
+  load and native app termination/relaunch.
+
 ## Milestone 9 — End-to-end demo proof
 
-**Status:** Not started
+**Status:** In progress — submission scope is a recorded provider-backed web run; native and extra-provider follow-up are explicitly out of scope
 
 **Scope**
 
 - Connect the live sandbox/devnet adapters to the shared app.
 - Replace local preview controls with provider-backed test flows.
-- Verify web and an iPhone development build, including auth redirects and
-  return paths. This final physical-device acceptance run covers the complete
-  app: first Google sign-in, wallet creation/restoration and displayed address,
-  Settings export-warning and re-auth flow, failed-login state, and visual
-  inspection against the approved universal-app design reference.
-- Configure and verify Apple and GitHub sign-in, including their web and iOS
-  redirect/return paths.
+- Record the served web app through first Google sign-in, wallet
+  creation/restoration and displayed address, Settings export warning and
+  re-auth gate, failed-login state, and visual inspection against the approved
+  web design reference.
+- Apple and GitHub OAuth, plus physical-iPhone return-path verification, are
+  follow-up work. They are not Milestone 9 or submission gates.
 
 **Completion evidence**
 
 - One recorded run demonstrates: social sign-in → embedded wallet → Stripe
   test connection → posted merchant transaction → immutable roundup → separate
   test funding → policy-approved devnet allocation → reconciled receipt.
-- The same persisted account is accurate on web and iOS.
+- The same persisted account remains accurate after a full served-web refresh.
 - Agent records a clean, provider-backed end-to-end run with no mocked adapter
-  in the acceptance path, then performs the visual gate and a refresh/restart
-  reconciliation on both platforms.
+  in the acceptance path, then performs the visual gate and a full-refresh
+  reconciliation on web.
+
+**Working evidence — 2026-09-25**
+
+- Recorded a 76-second, text-captioned pitch video (1920×1080, no voiceover)
+  from the served web app on port 8081 against the API on port 3000, using an
+  existing signed-in test account. It shows Home, Activity, Plan, the
+  full-batch preview, the confirmed Portfolio allocation receipt, and the
+  mobile-width web layout. It keeps the Stripe-test/test-USDC/no-value-devnet
+  disclosure on screen.
+- This is not the M9 acceptance run. It does not show a fresh Google sign-in,
+  a new Stripe transaction, a new funding action, or a new allocation. The
+  batch quote step still reports `Not set up yet`, so it was deliberately
+  left out of the video. It also has no full-refresh check. The video file is
+  kept outside Git.
 
 ## Milestone 10 — Handoff and release readiness
 

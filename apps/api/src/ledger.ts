@@ -1,4 +1,5 @@
-import { calculateRoundupCents } from '@roundup/domain';
+import { calculateRoundupCents, type RoundupRule } from '@roundup/domain';
+import type { AllocationPolicy } from '@roundup/domain/policy';
 import type { Database } from './db';
 
 type SourceEventInput = {
@@ -13,7 +14,13 @@ export async function recordSourceEvent(sql: Database, userId: string, input: So
 }
 
 export async function recordSourceEventInTransaction(sql: Database, userId: string, input: SourceEventInput, idempotencyKey: string) {
-  const roundupCents = calculateRoundupCents(input.amountCents);
+  const [savedPolicy] = await sql<{ version: number; policy: AllocationPolicy }[]>`
+    SELECT version, policy FROM allocation_policies WHERE user_id = ${userId} ORDER BY version DESC LIMIT 1
+  `;
+  const rule: RoundupRule = savedPolicy?.policy.rounding?.kind === 'fixed'
+    ? { kind: 'fixed-extra', cents: savedPolicy.policy.rounding.cents }
+    : { kind: 'next-dollar', multiplier: savedPolicy?.policy.rounding?.kind === 'multiplier' ? savedPolicy.policy.rounding.multiplier : 1 };
+  const roundupCents = calculateRoundupCents(input.amountCents, rule);
   const [saved] = await sql<{ response: unknown }[]>`
       SELECT response FROM idempotency_keys WHERE key = ${idempotencyKey} AND user_id = ${userId} AND operation = 'source-event'
     `;
@@ -29,7 +36,7 @@ export async function recordSourceEventInTransaction(sql: Database, userId: stri
 
   const [entry] = roundupCents === 0 ? [] : await sql<{ id: string }[]>`
       INSERT INTO roundup_entries (user_id, source_event_id, amount_cents, rule_version)
-      VALUES (${userId}, ${event.id}, ${roundupCents}, 'm3-next-dollar-v1')
+      VALUES (${userId}, ${event.id}, ${roundupCents}, ${savedPolicy ? `policy-v${savedPolicy.version}-${rule.kind}` : 'm3-next-dollar-v1'})
       ON CONFLICT (source_event_id) DO NOTHING
       RETURNING id
     `;

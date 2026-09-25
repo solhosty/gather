@@ -32,8 +32,8 @@ maybeDescribe('profile, policy draft, and export integration', () => {
     expect((await call('/v1/profile', { method: 'PUT', body: JSON.stringify({ displayName: 'Hunter', homeCurrency: 'JPY' }) })).status).toBe(400);
     expect(await (await call('/v1/profile', { method: 'PUT', body: JSON.stringify({ displayName: '  Hunter ', homeCurrency: 'EUR' }) })).json()).toEqual({ displayName: 'Hunter', homeCurrency: 'EUR' });
 
-    expect(await (await call('/v1/policy')).json()).toEqual({ version: 0, savedAt: null, policy: null });
-    const draft = { mix: [{ symbol: 'AAPL', percent: 50 }, { symbol: 'MSFT', percent: 30 }, { symbol: 'NVDA', percent: 20 }], minimumCents: 1000, dailyCapCents: 800, weeklyCapCents: 2500, maxSlippageBps: 50, autoInvest: true };
+    expect(await (await call('/v1/policy')).json()).toMatchObject({ version: 0, savedAt: null, policy: null, consent: null, delegationReady: expect.any(Boolean) });
+    const draft = { mix: [{ symbol: 'AAPL', percent: 50 }, { symbol: 'MSFT', percent: 30 }, { symbol: 'NVDA', percent: 20 }], rounding: { kind: 'multiplier', multiplier: 1 }, minimumCents: 1000, perEventCapCents: 500, dailyCapCents: 800, weeklyCapCents: 2500, maxSlippageBps: 50, expiresAt: '2027-09-25T00:00:00.000Z', paused: false, buyWhatsReady: false, autoInvest: true };
     const first = await call('/v1/policy', { method: 'POST', body: JSON.stringify(draft) });
     expect(first.status).toBe(201);
     expect(await first.json()).toMatchObject({ version: 1, policy: { autoInvest: false } });

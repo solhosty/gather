@@ -4,7 +4,7 @@ import { useAccount } from '../account/AccountProvider';
 export function usePlanSummary() {
   const { ledger, settings, funding, bank } = useAccount();
   const saved = settings.policy?.policy ?? null;
-  const limits = saved ?? suggestedLimits;
+  const limits = saved ?? { ...suggestedLimits, rounding: { kind: 'multiplier' as const, multiplier: 1 as const }, expiresAt: '2027-09-25T00:00:00.000Z', paused: false, buyWhatsReady: false };
   const mix = saved?.mix ?? [];
   const pendingCents = ledger.ledger?.pendingCents ?? 0;
   const entries = ledger.ledger?.entries ?? [];
@@ -24,5 +24,6 @@ export function usePlanSummary() {
     nextLeg: furthestBelowTarget(mix),
     testUsdcCents: funding.funding?.availableTestUsdcCents ?? 0,
     bankCount: bank.connections?.length ?? 0,
+    consent: settings.policy?.consent ?? null,
   };
 }

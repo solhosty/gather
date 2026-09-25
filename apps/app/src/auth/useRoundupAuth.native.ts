@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useEmbeddedSolanaWallet, useLoginWithOAuth, usePrivy } from '@privy-io/expo';
+import { useEmbeddedSolanaWallet, useLoginWithOAuth, usePrivy, useSigners } from '@privy-io/expo';
 
 type Provider = 'google' | 'apple';
 type LinkedAccount = { type?: string };
@@ -19,6 +19,7 @@ export function useRoundupAuth() {
   const { error, getAccessToken, isReady, logout, user } = usePrivy();
   const { login, state } = useLoginWithOAuth();
   const solanaWallet = useEmbeddedSolanaWallet();
+  const { addSigners, removeSigners } = useSigners();
   const linkedAccounts = getLinkedAccounts(user);
   const oauthProvider = linkedAccounts.some((account) => account.type === 'google_oauth')
     ? 'google' as const
@@ -35,12 +36,25 @@ export function useRoundupAuth() {
   return {
     authError: error,
     connectExternalWallet: undefined as (() => void) | undefined,
+    delegateWallet: async (address: string) => {
+      const signerId = process.env.EXPO_PUBLIC_PRIVY_AUTHORIZATION_KEY_ID;
+      const policyId = process.env.EXPO_PUBLIC_PRIVY_AUTOMATION_POLICY_ID;
+      if (!signerId || !policyId) throw new Error('Privy authorization signer policy is not configured.');
+      try {
+        await addSigners({ address, signers: [{ signerId, policyIds: [policyId] }] });
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes('Duplicate signer')) throw error;
+        await removeSigners({ address });
+        await addSigners({ address, signers: [{ signerId, policyIds: [policyId] }] });
+      }
+    },
     getAccessToken,
     isReady,
     login: (provider: Provider) => login({ provider }),
     logout,
     oauthLoading: state.status === 'loading',
     oauthProvider,
+    revokeDelegation: () => removeSigners({ address: solanaWallet.status === 'connected' ? solanaWallet.wallets[0]?.address ?? '' : '' }),
     user,
     walletAddress: solanaWallet.status === 'connected' ? solanaWallet.wallets[0]?.address : undefined,
     walletStatus: solanaWallet.status,

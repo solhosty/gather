@@ -88,7 +88,53 @@ export async function readExecutions(sql: Database, userId: string) {
   return { receipts: rows.map((row) => ({ id: row.id, state: row.state, receipt: row.receipt, createdAt: row.created_at })) };
 }
 
-export async function createExecution(sql: Database, userId: string, input: unknown, idempotencyKey: string, adapter: DevnetExecutionAdapter) {
+export type AutomaticExecutionResult =
+  | { state: 'blocked'; reason: string }
+  | { state: 'submitted'; receiptId: string; amountCents: number };
+
+export async function createAutomaticExecution(sql: Database, userId: string, adapter: DevnetExecutionAdapter): Promise<AutomaticExecutionResult> {
+  const [policyRow] = await sql<{ version: number; policy: import('@roundup/domain/policy').AllocationPolicy; consent_state: string | null; wallet_address: string | null }[]>`
+    SELECT policy.version, policy.policy, consent.state AS consent_state, consent.wallet_address
+    FROM allocation_policies AS policy
+    LEFT JOIN delegated_wallet_consents AS consent ON consent.user_id = policy.user_id AND consent.policy_version = policy.version
+    WHERE policy.user_id = ${userId} ORDER BY policy.version DESC LIMIT 1
+  `;
+  if (!policyRow?.policy) return { state: 'blocked', reason: 'Save an automatic-invest policy first.' };
+  const policy = policyRow.policy;
+  if (policy.paused || policyRow.consent_state === 'paused') return { state: 'blocked', reason: 'Automatic purchases are paused.' };
+  if (policyRow.consent_state !== 'active' || !policyRow.wallet_address) return { state: 'blocked', reason: 'Wallet consent is required before automatic purchases.' };
+  if (new Date(policy.expiresAt).getTime() <= Date.now()) return { state: 'blocked', reason: 'Wallet consent policy expired; approve a new policy.' };
+  if (policy.mix.reduce((total, leg) => total + leg.percent, 0) !== 100 || policy.mix.some((leg) => leg.percent <= 0)) return { state: 'blocked', reason: 'Every automatic batch needs a complete target mix.' };
+  const entries = await sql<{ id: string; amount_cents: number }[]>`SELECT id, amount_cents FROM roundup_entries WHERE user_id = ${userId} AND state = 'pending' ORDER BY created_at FOR UPDATE`;
+  const amountCents = entries.reduce((total, entry) => total + entry.amount_cents, 0);
+  if (amountCents < policy.minimumCents) return { state: 'blocked', reason: 'Roundups have not reached the policy minimum.' };
+  if (entries.some((entry) => entry.amount_cents > policy.perEventCapCents)) return { state: 'blocked', reason: 'A roundup exceeds the per-event cap.' };
+  const [usage] = await sql<{ daily_cents: number; weekly_cents: number }[]>`
+    SELECT COALESCE(SUM(batch.amount_cents) FILTER (WHERE batch.created_at >= date_trunc('day', now())), 0)::integer AS daily_cents,
+      COALESCE(SUM(batch.amount_cents) FILTER (WHERE batch.created_at >= date_trunc('week', now())), 0)::integer AS weekly_cents
+    FROM purchase_batches AS batch
+    WHERE batch.user_id = ${userId} AND batch.policy_version = ${policyRow.version} AND batch.state IN ('approved', 'submitted', 'confirmed')
+  `;
+  if (usage.daily_cents + amountCents > policy.dailyCapCents) return { state: 'blocked', reason: 'This batch would exceed the daily cap.' };
+  if (usage.weekly_cents + amountCents > policy.weeklyCapCents) return { state: 'blocked', reason: 'This batch would exceed the weekly cap.' };
+  const mirrors = await sql<{ symbol: string }[]>`SELECT symbol FROM devnet_mirrors`;
+  const readySymbols = new Set(mirrors.map((mirror) => mirror.symbol));
+  if (policy.mix.some((leg) => !readySymbols.has(leg.symbol))) return { state: 'blocked', reason: 'A target mirror is not ready; the full batch remains pending.' };
+  const idempotencyKey = `automatic-policy-${policyRow.version}-${entries.map((entry) => entry.id).join('-')}`;
+  const result = await createExecution(sql, userId, { walletAddress: policyRow.wallet_address, amountCents, mix: policy.mix }, idempotencyKey, adapter, policyRow.version);
+  const batchId = (result.receipt as { batchId: string }).batchId;
+  await sql.begin(async (tx) => {
+    for (const entry of entries) await tx`INSERT INTO purchase_batch_entries (purchase_batch_id, roundup_entry_id) VALUES (${batchId}, ${entry.id}) ON CONFLICT DO NOTHING`;
+  });
+  // A successfully returned devnet receipt has concrete signatures. Confirm it
+  // immediately so automatic batches do not depend on an invisible manual API
+  // call before their immutable roundup entries become invested. Uncertain
+  // submissions still remain in `submitting` and are never retried here.
+  const reconciled = await reconcileExecution(sql, userId, result.id, adapter);
+  return { state: reconciled.state, receiptId: result.id, amountCents };
+}
+
+export async function createExecution(sql: Database, userId: string, input: unknown, idempotencyKey: string, adapter: DevnetExecutionAdapter, policyVersion?: number) {
   const body = input as Record<string, unknown>;
   const walletAddress = typeof body.walletAddress === 'string' ? body.walletAddress.trim() : '';
   const amountCents = body.amountCents;
@@ -111,8 +157,8 @@ export async function createExecution(sql: Database, userId: string, input: unkn
     let remaining = amountCents as number;
     if (credits.reduce((total, credit) => total + credit.available_cents, 0) < remaining) throw new Response(JSON.stringify({ error: 'Insufficient reconciled test-USDC credit for this devnet allocation.' }), { status: 409 });
     const [created] = await tx<BatchRow[]>`
-      INSERT INTO purchase_batches (user_id, idempotency_key, state, amount_cents, wallet_address, allocation_mix)
-      VALUES (${userId}, ${idempotencyKey}, 'approved', ${amountCents as number}, ${walletAddress}, ${typedMix}::jsonb)
+      INSERT INTO purchase_batches (user_id, idempotency_key, state, amount_cents, wallet_address, allocation_mix, policy_version)
+      VALUES (${userId}, ${idempotencyKey}, 'approved', ${amountCents as number}, ${walletAddress}, ${typedMix}::jsonb, ${policyVersion ?? null})
       RETURNING id, state, amount_cents, wallet_address, allocation_mix
     `;
     for (const credit of credits) {
@@ -166,6 +212,7 @@ export async function reconcileExecution(sql: Database, userId: string, receiptI
   if (confirmed) {
     await sql`UPDATE execution_receipts SET state = 'confirmed', receipt = jsonb_set(receipt, '{state}', '"confirmed"'::jsonb) WHERE id = ${row.id}`;
     await sql`UPDATE purchase_batches SET state = 'confirmed', confirmed_at = now() WHERE id = ${row.batch_id}`;
+    await sql`UPDATE roundup_entries SET state = 'invested' WHERE id IN (SELECT roundup_entry_id FROM purchase_batch_entries WHERE purchase_batch_id = ${row.batch_id}) AND state = 'pending'`;
   }
   return { id: row.id, state: confirmed ? 'confirmed' : row.state, confirmed };
 }

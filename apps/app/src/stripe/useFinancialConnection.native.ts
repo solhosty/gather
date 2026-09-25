@@ -14,7 +14,7 @@ export function useFinancialConnection(getAccessToken: () => Promise<string | nu
     try {
       const token = await getAccessToken();
       const sessionResponse = await fetch(`${apiBaseUrl}/v1/stripe/financial-connections/sessions`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
-      if (!sessionResponse.ok) throw new Error('Roundup could not prepare the secure test connection.');
+      if (!sessionResponse.ok) throw new Error('Gather could not prepare the secure test connection.');
       const session = await sessionResponse.json() as { sessionId: string; clientSecret: string };
       await initStripe({ publishableKey });
       const result = await collectFinancialConnectionsAccounts(session.clientSecret);

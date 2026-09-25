@@ -5,7 +5,8 @@ const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:878
 
 export type Currency = 'USD' | 'EUR' | 'GBP' | 'CAD';
 export type Profile = { displayName: string | null; homeCurrency: Currency };
-export type PolicyRecord = { version: number; savedAt: string | null; policy: AllocationPolicy | null };
+export type PolicyConsent = { state: 'active' | 'paused' | 'superseded' | 'revoked'; walletAddress: string | null };
+export type PolicyRecord = { version: number; savedAt: string | null; policy: AllocationPolicy | null; consent: PolicyConsent | null; delegationReady: boolean };
 export type PolicyDraft = Omit<AllocationPolicy, 'autoInvest'>;
 
 type TokenSource = () => Promise<string | null | undefined>;
@@ -54,7 +55,19 @@ export function useAccountSettings(enabled: boolean, getAccessToken: TokenSource
     return saved;
   }, [getAccessToken]);
 
+  const activatePolicy = useCallback(async (walletAddress: string) => {
+    const saved = await request<PolicyRecord>(getAccessToken, '/v1/policy/activate', { method: 'POST', body: JSON.stringify({ walletAddress }) });
+    setPolicy(saved);
+    return saved;
+  }, [getAccessToken]);
+
+  const pausePolicy = useCallback(async () => {
+    const saved = await request<PolicyRecord>(getAccessToken, '/v1/policy/pause', { method: 'POST' });
+    setPolicy(saved);
+    return saved;
+  }, [getAccessToken]);
+
   const exportData = useCallback(() => request<Record<string, unknown>>(getAccessToken, '/v1/export'), [getAccessToken]);
 
-  return { error, exportData, policy, profile, refresh: load, savePolicy, saveProfile };
+  return { activatePolicy, error, exportData, pausePolicy, policy, profile, refresh: load, savePolicy, saveProfile };
 }

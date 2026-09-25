@@ -1,4 +1,4 @@
-import { PolicyError, validatePolicy, type AllocationPolicy } from '@roundup/domain/policy';
+import { expandsAuthority, PolicyError, validatePolicy, type AllocationPolicy } from '@roundup/domain/policy';
 import type { Database } from './db';
 import { readFunding } from './funding';
 import { readLedger } from './ledger';
@@ -29,10 +29,14 @@ export async function updateProfile(sql: Database, userId: string, input: unknow
 }
 
 export async function readPolicy(sql: Database, userId: string) {
-  const [row] = await sql<{ version: number; policy: AllocationPolicy; created_at: string }[]>`
-    SELECT version, policy, created_at FROM allocation_policies WHERE user_id = ${userId} ORDER BY version DESC LIMIT 1
+  const [row] = await sql<{ version: number; policy: AllocationPolicy; created_at: string; consent_state: string | null; wallet_address: string | null }[]>`
+    SELECT policy.version, policy.policy, policy.created_at, consent.state AS consent_state, consent.wallet_address
+    FROM allocation_policies AS policy
+    LEFT JOIN delegated_wallet_consents AS consent ON consent.user_id = policy.user_id AND consent.policy_version = policy.version
+    WHERE policy.user_id = ${userId} ORDER BY policy.version DESC LIMIT 1
   `;
-  return row ? { version: row.version, savedAt: row.created_at, policy: row.policy } : { version: 0, savedAt: null, policy: null };
+  const delegationReady = Boolean(process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY);
+  return row ? { version: row.version, savedAt: row.created_at, policy: row.policy, consent: row.consent_state ? { state: row.consent_state, walletAddress: row.wallet_address } : null, delegationReady } : { version: 0, savedAt: null, policy: null, consent: null, delegationReady };
 }
 
 export async function savePolicy(sql: Database, userId: string, input: unknown) {
@@ -42,15 +46,47 @@ export async function savePolicy(sql: Database, userId: string, input: unknown) 
     throw error;
   }
   return sql.begin(async (tx) => {
-    // Serialize concurrent saves for one user so versions stay contiguous.
     await tx`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
+    const [previous] = await tx<{ version: number; policy: AllocationPolicy; consent_state: string | null; wallet_address: string | null }[]>`
+      SELECT policy.version, policy.policy, consent.state AS consent_state, consent.wallet_address
+      FROM allocation_policies AS policy
+      LEFT JOIN delegated_wallet_consents AS consent ON consent.user_id = policy.user_id AND consent.policy_version = policy.version
+      WHERE policy.user_id = ${userId} ORDER BY policy.version DESC LIMIT 1
+    `;
     const [{ next }] = await tx<{ next: number }[]>`SELECT COALESCE(MAX(version), 0)::integer + 1 AS next FROM allocation_policies WHERE user_id = ${userId}`;
     const [row] = await tx<{ version: number; created_at: string }[]>`
       INSERT INTO allocation_policies (user_id, version, policy) VALUES (${userId}, ${next}, ${policy}::jsonb)
       RETURNING version, created_at
     `;
-    return { version: row.version, savedAt: row.created_at, policy };
+    const preserveConsent = previous?.consent_state === 'active' && !previous.policy.paused && !policy.paused && !expandsAuthority(previous.policy, policy);
+    if (preserveConsent && previous.wallet_address) {
+      await tx`INSERT INTO delegated_wallet_consents (user_id, policy_version, wallet_address, state) VALUES (${userId}, ${row.version}, ${previous.wallet_address}, 'active')`;
+      await tx`UPDATE delegated_wallet_consents SET state = 'superseded', updated_at = now() WHERE user_id = ${userId} AND policy_version = ${previous.version}`;
+    }
+    return { version: row.version, savedAt: row.created_at, policy, consent: preserveConsent ? { state: 'active', walletAddress: previous.wallet_address } : null };
   });
+}
+
+export async function activatePolicy(sql: Database, userId: string, walletAddress: string) {
+  if (!process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY) throw badRequest('Server-side delegated actions are not configured. No wallet permission was requested.');
+  const current = await readPolicy(sql, userId);
+  if (!current.policy || !current.version) throw badRequest('Save a policy before requesting wallet consent.');
+  if (current.policy.paused) throw badRequest('Resume the policy before requesting wallet consent.');
+  if (current.policy.mix.reduce((total, leg) => total + leg.percent, 0) !== 100) throw badRequest('A strict automatic policy needs a target mix totaling 100%.');
+  await sql.begin(async (tx) => {
+    await tx`UPDATE delegated_wallet_consents SET state = 'superseded', updated_at = now() WHERE user_id = ${userId} AND state = 'active'`;
+    await tx`INSERT INTO delegated_wallet_consents (user_id, policy_version, wallet_address, state)
+      VALUES (${userId}, ${current.version}, ${walletAddress}, 'active')
+      ON CONFLICT (user_id, policy_version) DO UPDATE SET wallet_address = EXCLUDED.wallet_address, state = 'active', consented_at = now(), updated_at = now()`;
+  });
+  return readPolicy(sql, userId);
+}
+
+export async function pausePolicy(sql: Database, userId: string) {
+  const current = await readPolicy(sql, userId);
+  if (!current.version) throw badRequest('No policy is saved.');
+  await sql`UPDATE delegated_wallet_consents SET state = 'paused', updated_at = now() WHERE user_id = ${userId} AND policy_version = ${current.version} AND state = 'active'`;
+  return readPolicy(sql, userId);
 }
 
 export async function exportAccountData(sql: Database, userId: string) {

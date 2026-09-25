@@ -79,7 +79,7 @@ export function SourcesDialog() {
         )) : <Text variant="caption" style={styles.emptyRow}>No bank connected yet. Connections are read-only.</Text>}
       </SourceGroup>
       <SourceGroup title="Solana wallets" count="1 connected">
-        <SourceAccount initial="R" tint={color.wallet} title="Roundup wallet" detail={`${shortAddress(auth.walletAddress) ?? 'Creating…'} · funds purchases`} badge="Funding" />
+          <SourceAccount initial="G" tint={color.wallet} title="Gather wallet" detail={`${shortAddress(auth.walletAddress) ?? 'Creating…'} · funds purchases`} badge="Funding" />
       </SourceGroup>
       <View style={[styles.connectActions, !isWide && styles.connectActionsNarrow]}>
         <Button label={connection.connectionState === 'connecting' ? 'Opening Stripe…' : '+ Connect bank'} variant="secondary" busy={connection.connectionState === 'connecting'} onPress={() => void connection.connect()} style={styles.flex} />

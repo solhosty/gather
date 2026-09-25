@@ -40,7 +40,7 @@ export default function PortfolioScreen() {
   return (
     <Screen kicker="Investments" title="Portfolio">
       <View style={[styles.tools, !isWide && styles.toolsNarrow]}>
-        <Text variant="body" tone="muted" style={styles.flex}>Targets and holdings across your Roundup wallet.</Text>
+        <Text variant="body" tone="muted" style={styles.flex}>Targets and holdings across your Gather wallet.</Text>
         <Pressable accessibilityRole="button" onPress={() => open('sources')} style={styles.pill}>
           <Text style={styles.pillText}>1 wallet <Text tone="accent" style={styles.pillText}>Manage</Text></Text>
         </Pressable>

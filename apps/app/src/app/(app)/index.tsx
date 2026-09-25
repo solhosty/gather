@@ -29,6 +29,11 @@ export default function HomeScreen() {
   const newInvestor = !loading && plan.entries.length === 0 && plan.bankCount === 0 && (funding.funding?.attempts.length ?? 0) === 0;
   const recent = plan.entries.slice(0, 3);
   const progress = plan.limits.minimumCents ? plan.pendingCents / plan.limits.minimumCents : 0;
+  const automaticBlockReason = ledger.automaticFeedback?.state === 'blocked'
+    ? ledger.automaticFeedback.reason
+    : plan.consent?.state === 'active' && plan.pendingCents > 0 && plan.pendingCents < plan.limits.minimumCents
+      ? 'Roundups have not reached the policy minimum.'
+      : undefined;
   const confirmedLegs = executions.receipts.find((item) => item.state === 'confirmed')?.receipt.legs ?? [];
   const confirmedUnits = confirmedLegs.reduce((total, leg) => total + leg.units, 0);
   const portfolioValueCents = confirmedLegs.length && confirmedLegs.every((leg) => {
@@ -50,6 +55,12 @@ export default function HomeScreen() {
     <Screen kicker={todayKicker()} title={name ? `Welcome back, ${name}.` : 'Welcome back.'}>
       {ledger.error ? <ErrorState message={ledger.error} onRetry={() => void ledger.refresh()} /> : null}
       {loading ? <LoadingState label="Loading your durable ledger" /> : null}
+      {automaticBlockReason ? (
+        <Card variant="soft" style={styles.automaticNotice}>
+          <Text variant="eyebrow">Automatic purchase pending</Text>
+          <Text variant="body">{automaticBlockReason}</Text>
+        </Card>
+      ) : null}
 
       {!loading && !newInvestor ? (
         <>
@@ -79,7 +90,7 @@ export default function HomeScreen() {
             <PressableCard style={[styles.stat, !isGrid && styles.statFull]} onPress={() => router.navigate('/plan')}>
               <Text variant="eyebrow">Auto-invest limit</Text>
               <Text variant="figure" style={styles.statValue}>{formatCents(0)} / {formatCents(plan.limits.weeklyCapCents)}</Text>
-              <Text variant="caption">{plan.saved ? 'Off · manage policy' : 'Not set up · manage policy'} <Text tone="accent" style={styles.bold}>→</Text></Text>
+              <Text variant="caption">{plan.consent?.state === 'active' ? 'On · manage policy' : plan.consent?.state === 'paused' ? 'Paused · manage policy' : plan.saved ? 'Awaiting consent · manage policy' : 'Not set up · manage policy'} <Text tone="accent" style={styles.bold}>→</Text></Text>
             </PressableCard>
           </View>
 
@@ -176,4 +187,5 @@ const styles = StyleSheet.create({
   recentHeading: { alignItems: 'center', flexDirection: 'row', marginBottom: 17 },
   recentDetail: { color: color.muted, fontSize: 11, marginTop: 4 },
   noActivity: { padding: 18 },
+  automaticNotice: { gap: 6, marginBottom: 14, padding: 16 },
 });

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { allocatedPercent, devnetMirrorCatalog, findMirror, type MixLeg } from '@roundup/domain/policy';
+import { allocatedPercent, devnetMirrorCatalog, findMirror, type AllocationPolicy, type MixLeg } from '@roundup/domain/policy';
 import { Badge, Button, Card, Donut, KeyValue, LimitField, OptionRow, SearchField, Segmented, SheetContent, SheetHost, Slider, Text, color, font, formatCents, raised, useLayout } from '@roundup/ui';
 import { useAccount } from '../../account/AccountProvider';
 import { useDialogs } from '../../dialogs/context';
@@ -10,7 +10,7 @@ import { usePlanSummary } from '../../features/usePlanSummary';
 import { Screen } from '../../shell/Screen';
 
 type Panel = 'stock' | 'ideas' | 'limits';
-type Limits = { minimumCents: number; dailyCapCents: number; weeklyCapCents: number; maxSlippageBps: number };
+type Limits = Omit<AllocationPolicy, 'mix' | 'autoInvest' | 'paused'>;
 
 export default function PlanScreen() {
   const { connection, settings } = useAccount();
@@ -39,7 +39,7 @@ export default function PlanScreen() {
     setSaving(true);
     setSaveError(undefined);
     try {
-      await settings.savePolicy({ mix: nextMix, minimumCents: limits.minimumCents, dailyCapCents: limits.dailyCapCents, weeklyCapCents: limits.weeklyCapCents, maxSlippageBps: limits.maxSlippageBps });
+      await settings.savePolicy({ mix: nextMix, ...limits, paused: plan.limits.paused });
       return true;
     } catch (cause) {
       setSaveError(cause instanceof Error ? cause.message : 'Your plan could not be saved.');
@@ -75,7 +75,7 @@ export default function PlanScreen() {
             {isWide ? <Text style={styles.connectorLabel}>funds</Text> : null}
             <View style={!isWide && styles.connectorCircle}><Text tone="accent" style={styles.connectorArrow}>{isWide ? '→' : '↓'}</Text></View>
           </View>
-          <FlowItem glyph="W" tint={color.wallet} label="Purchases use" title="Roundup wallet" detail={`${formatCents(plan.testUsdcCents)} available`} />
+          <FlowItem glyph="W" tint={color.wallet} label="Purchases use" title="Gather wallet" detail={`${formatCents(plan.testUsdcCents)} available`} />
         </View>
         <View style={[styles.flowActions, !isWide && styles.flowActionsNarrow]}>
           <Button label={connection.connectionState === 'connecting' ? 'Opening Stripe…' : '+ Connect bank'} variant="secondary" busy={connection.connectionState === 'connecting'} onPress={() => void connection.connect()} />
@@ -145,7 +145,7 @@ export default function PlanScreen() {
               <Text variant="eyebrow">Automatic purchases</Text>
               <Text variant="title" style={styles.cardTitle}>Invest roundups in the background</Text>
             </View>
-            <Badge label="Manual" />
+            <Badge label={plan.consent?.state === 'active' ? 'Automatic' : plan.consent?.state === 'paused' ? 'Paused' : 'Manual'} tone={plan.consent?.state === 'active' ? 'accent' : undefined} />
           </View>
           <View style={styles.policyFlow}>
             {['Roundups', `${formatCents(plan.limits.minimumCents)} minimum`, 'Buy underweight stock'].map((step, index) => (
@@ -155,7 +155,7 @@ export default function PlanScreen() {
               </View>
             ))}
           </View>
-          <Text variant="body" style={styles.policyCopy}>You review every investment batch. Automatic purchases need delegated wallet consent, which is not set up yet.</Text>
+          <Text variant="body" style={styles.policyCopy}>{plan.consent?.state === 'active' ? 'Automatic batches require every target leg to be ready and stay within these boundaries.' : plan.consent?.state === 'paused' ? 'Automatic purchases are paused. A new wallet approval is required to resume.' : 'You review every investment batch until you approve delegated wallet consent.'}</Text>
           <View style={styles.details}>
             <KeyValue label="Minimum buy" value={formatCents(plan.limits.minimumCents)} />
             <KeyValue label="Max per day" value={formatCents(plan.limits.dailyCapCents)} />
@@ -165,7 +165,7 @@ export default function PlanScreen() {
           {plan.usingSuggestedLimits ? <Text variant="caption">Suggested defaults. Save limits to keep them with your plan.</Text> : null}
           <View style={[styles.policyActions, !isWide && styles.policyActionsNarrow]}>
             <Button label="Edit limits" variant="secondary" onPress={() => setPanel('limits')} style={styles.flex} />
-            <Button label="Set up automatic purchases" onPress={() => open('approval')} style={styles.policyPrimary} />
+            {plan.consent?.state === 'active' ? <Button label="Pause automatic purchases" variant="secondary" onPress={() => void settings.pausePolicy()} style={styles.policyPrimary} /> : <Button label="Set up automatic purchases" onPress={() => open('approval')} style={styles.policyPrimary} />}
           </View>
         </Card>
       </View>
@@ -231,22 +231,40 @@ function IdeasPanel({ mix, onAdd }: { mix: MixLeg[]; onAdd: (symbol: MixLeg['sym
 function LimitsPanel({ onSave, saving, error }: { onSave: (limits: Limits) => Promise<void>; saving: boolean; error?: string }) {
   const { limits } = usePlanSummary();
   const [minimum, setMinimum] = useState((limits.minimumCents / 100).toString());
+  const [perEvent, setPerEvent] = useState((limits.perEventCapCents / 100).toString());
   const [daily, setDaily] = useState((limits.dailyCapCents / 100).toString());
   const [weekly, setWeekly] = useState((limits.weeklyCapCents / 100).toString());
   const [slippage, setSlippage] = useState((limits.maxSlippageBps / 100).toString());
+  const [roundingKind, setRoundingKind] = useState(limits.rounding.kind);
+  const [multiplier, setMultiplier] = useState(limits.rounding.kind === 'multiplier' ? String(limits.rounding.multiplier) : '1');
+  const [fixedExtra, setFixedExtra] = useState(limits.rounding.kind === 'fixed' ? (limits.rounding.cents / 100).toString() : '0.25');
+  const [expiry, setExpiry] = useState<'30' | '90' | '365'>('90');
+  const [buyWhatsReady, setBuyWhatsReady] = useState(limits.buyWhatsReady);
+  const expiresAt = () => new Date(Date.now() + Number(expiry) * 24 * 60 * 60 * 1000).toISOString();
   return (
     <SheetContent eyebrow="Auto-invest limits" title="Set the boundaries.">
       <LimitField label="Minimum buy" unit="USDC" value={minimum} onChangeText={setMinimum} />
+      <LimitField label="Per-event cap" unit="USDC" value={perEvent} onChangeText={setPerEvent} />
       <LimitField label="Daily limit" unit="USDC" value={daily} onChangeText={setDaily} />
       <LimitField label="Weekly limit" unit="USDC" value={weekly} onChangeText={setWeekly} />
       <LimitField label="Maximum slippage" unit="%" value={slippage} onChangeText={setSlippage} />
+      <Text variant="caption" style={styles.gap}>Round each eligible purchase</Text>
+      <Segmented accessibilityLabel="Rounding rule" value={roundingKind} onChange={(value) => setRoundingKind(value as 'multiplier' | 'fixed')} options={[{ value: 'multiplier', label: 'Multiplier' }, { value: 'fixed', label: 'Fixed extra' }]} />
+      {roundingKind === 'multiplier' ? <Segmented accessibilityLabel="Roundup multiplier" value={multiplier} onChange={setMultiplier} options={[{ value: '1', label: '1×' }, { value: '2', label: '2×' }, { value: '3', label: '3×' }]} /> : <LimitField label="Fixed extra" unit="USDC" value={fixedExtra} onChangeText={setFixedExtra} />}
+      <Text variant="caption" style={styles.gap}>Consent expires</Text>
+      <Segmented accessibilityLabel="Policy expiry" value={expiry} onChange={(value) => setExpiry(value as '30' | '90' | '365')} options={[{ value: '30', label: '30 days' }, { value: '90', label: '90 days' }, { value: '365', label: '1 year' }]} />
+      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: buyWhatsReady }} onPress={() => setBuyWhatsReady(!buyWhatsReady)} style={styles.manualChoice}><Text style={styles.manualCheck}>{buyWhatsReady ? '✓' : '○'}</Text><View style={styles.flex}><Text style={styles.manualTitle}>Enable manual “Buy what’s ready”</Text><Text variant="caption">This never changes automatic full-mix behavior.</Text></View></Pressable>
       <Text variant="caption" style={styles.gap}>Limits are saved with your plan. They take effect for automatic purchases once wallet consent is set up.</Text>
       {error ? <Text variant="caption" tone="danger" style={styles.gap}>{error}</Text> : null}
       <Button label="Save limits" wide busy={saving} style={styles.gap} onPress={() => void onSave({
         minimumCents: dollarsToCents(minimum),
+        perEventCapCents: dollarsToCents(perEvent),
         dailyCapCents: dollarsToCents(daily),
         weeklyCapCents: dollarsToCents(weekly),
         maxSlippageBps: Math.round(Number(slippage) * 100),
+        rounding: roundingKind === 'multiplier' ? { kind: 'multiplier', multiplier: Number(multiplier) as 1 | 2 | 3 } : { kind: 'fixed', cents: dollarsToCents(fixedExtra) },
+        expiresAt: expiresAt(),
+        buyWhatsReady,
       })} />
     </SheetContent>
   );
@@ -315,6 +333,9 @@ const styles = StyleSheet.create({
   policyActions: { borderTopColor: color.lineSubtle, borderTopWidth: 1, flexDirection: 'row', gap: 16, marginTop: 16, paddingTop: 14 },
   policyActionsNarrow: { flexDirection: 'column-reverse', gap: 12 },
   policyPrimary: { flex: 1.45 },
+  manualChoice: { alignItems: 'center', borderColor: color.lineSubtle, borderRadius: 9, borderWidth: 1, flexDirection: 'row', gap: 9, marginTop: 12, padding: 10 },
+  manualCheck: { color: color.accent, fontSize: 16, fontWeight: '700' },
+  manualTitle: { fontSize: 12, fontWeight: '700', marginBottom: 2 },
   search: { flexDirection: 'row', marginBottom: 6, marginTop: 10 },
   idea: { alignItems: 'center', borderBottomColor: color.lineSubtle, borderBottomWidth: 1, flexDirection: 'row', gap: 10, paddingVertical: 12 },
   ideaPerf: { color: color.muted, fontSize: 12, fontWeight: '700' },

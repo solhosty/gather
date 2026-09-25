@@ -24,7 +24,7 @@ export function useFunding(enabled: boolean, walletAddress: string | undefined, 
       const token = await getAccessToken();
       const headers = { Authorization: `Bearer ${token}`, 'content-type': 'application/json' };
       const created = await fetch(`${apiBaseUrl}/v1/funding/attempts`, { method: 'POST', headers, body: JSON.stringify({ walletAddress, amountCents: 500 }) });
-      if (!created.ok) throw new Error('Roundup could not prepare the funding confirmation.');
+      if (!created.ok) throw new Error('Gather could not prepare the funding confirmation.');
       const attempt = await created.json() as { id: string };
       const confirmed = await fetch(`${apiBaseUrl}/v1/funding/attempts/confirm`, { method: 'POST', headers, body: JSON.stringify({ attemptId: attempt.id }) });
       if (!confirmed.ok) throw new Error('Stripe could not confirm the payment.');

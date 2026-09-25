@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useConnectWallet, useLoginWithOAuth, usePrivy } from '@privy-io/react-auth';
+import { useConnectWallet, useLoginWithOAuth, usePrivy, useSigners } from '@privy-io/react-auth';
 import { useCreateWallet } from '@privy-io/react-auth/solana';
 import {
   getOAuthProvider,
@@ -38,11 +38,16 @@ const useRoundupPrivy = usePrivy as unknown as () => PrivyState;
 const useRoundupOAuth = useLoginWithOAuth as unknown as () => OAuthState;
 const useRoundupConnectWallet = useConnectWallet as unknown as () => ExternalWalletState;
 const useRoundupCreateSolanaWallet = useCreateWallet as unknown as () => CreateWalletState;
+const useRoundupSigners = useSigners as unknown as () => {
+  addSigners: (input: { address: string; signers: { signerId: string; policyIds: string[] }[] }) => Promise<unknown>;
+  removeSigners: (input: { address: string }) => Promise<unknown>;
+};
 
 export function useRoundupAuth() {
   const { error, getAccessToken, logout, ready, user } = useRoundupPrivy();
   const { initOAuth, loading } = useRoundupOAuth();
   const { connectWallet } = useRoundupConnectWallet();
+  const { addSigners, removeSigners } = useRoundupSigners();
   const { createWallet } = useRoundupCreateSolanaWallet();
   // Privy's Solana `useWallets` hook initializes external-wallet connectors
   // even though this app only needs the embedded wallet. The authenticated
@@ -75,12 +80,29 @@ export function useRoundupAuth() {
   return {
     authError: error,
     connectExternalWallet: connectWallet,
+    delegateWallet: async (address: string) => {
+      const signerId = process.env.EXPO_PUBLIC_PRIVY_AUTHORIZATION_KEY_ID;
+      const policyId = process.env.EXPO_PUBLIC_PRIVY_AUTOMATION_POLICY_ID;
+      if (!signerId || !policyId) throw new Error('Privy authorization signer policy is not configured.');
+      try {
+        await addSigners({ address, signers: [{ signerId, policyIds: [policyId] }] });
+      } catch (error) {
+        // A new Stocklana policy version requires an intentional provider-side
+        // re-grant. Privy rejects duplicate additions, so rotate the existing
+        // signer instead of treating the previously granted authority as fresh
+        // consent for the expanded policy.
+        if (!(error instanceof Error) || !error.message.includes('Duplicate signer')) throw error;
+        await removeSigners({ address });
+        await addSigners({ address, signers: [{ signerId, policyIds: [policyId] }] });
+      }
+    },
     getAccessToken,
     isReady: ready,
     login: (provider: Provider) => initOAuth({ provider }),
     logout,
     oauthLoading: loading,
     oauthProvider,
+    revokeDelegation: () => removeSigners({ address: wallet?.address ?? createdWalletAddress ?? '' }),
     user,
     walletAddress: wallet?.address ?? createdWalletAddress,
     walletStatus: wallet || createdWalletAddress ? 'connected' : ready ? 'not-created' : 'creating',

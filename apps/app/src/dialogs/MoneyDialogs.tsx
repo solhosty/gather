@@ -70,7 +70,7 @@ export function ReceiveDialog() {
   const { auth } = useAccount();
   const [status, setStatus] = useState<string>();
   return (
-    <SheetContent eyebrow="Receive USDC" title="Your Roundup wallet.">
+    <SheetContent eyebrow="Receive USDC" title="Your Gather wallet.">
       <Text variant="body">Use this address to receive funds.</Text>
       <View style={styles.address}><Text selectable style={styles.addressText}>{auth.walletAddress ?? 'Creating your wallet…'}</Text></View>
       <Button label={status ?? 'Copy address'} wide disabled={!auth.walletAddress} onPress={() => { if (auth.walletAddress) void copyText(auth.walletAddress).then(setStatus).catch(() => setStatus('Copy failed')); }} />
@@ -128,7 +128,9 @@ export function ReviewDialog() {
 
 export function ApprovalDialog() {
   const plan = usePlanSummary();
-  const [continued, setContinued] = useState(false);
+  const { auth, settings } = useAccount();
+  const [status, setStatus] = useState<string>();
+  const [busy, setBusy] = useState(false);
   const assets = plan.mix.filter((leg) => leg.percent > 0).map((leg) => mirrorName(leg.symbol));
   const items = [
     assets.length ? assets.join(', ') : 'No assets yet · choose a target mix first',
@@ -136,14 +138,27 @@ export function ApprovalDialog() {
     'Expiry is set when you approve the wallet signer',
     'Pause or revoke anytime',
   ];
+  async function approve() {
+    if (!auth.walletAddress) return;
+    setBusy(true);
+    setStatus(undefined);
+    try {
+      await auth.delegateWallet(auth.walletAddress);
+      await settings.activatePolicy(auth.walletAddress);
+      setStatus('Automatic purchases are active within these boundaries. You can pause them at any time.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Wallet consent was not completed. Automatic purchases remain off.');
+    } finally { setBusy(false); }
+  }
   return (
     <SheetContent eyebrow="Approve auto-invest policy" title="You stay in control.">
       <Text variant="body">Roundups from eligible posted purchases add to your ledger. When it reaches {formatCents(plan.limits.minimumCents)} and funds are available, the policy can buy the stock furthest below your target mix.</Text>
       <View style={styles.approval}>
         {items.map((item) => <Text key={item} style={styles.approvalItem}><Text tone="accent" style={styles.check}>✓  </Text>{item}</Text>)}
       </View>
-      <Button label="Continue to wallet approval" trailing="→" wide onPress={() => setContinued(true)} />
-      {continued ? <View style={styles.gap}><NotSetUp milestone="policy & automation">Privy delegated-signer consent is not connected yet. Automatic purchases stay off.</NotSetUp></View> : null}
+      <Button label={plan.consent?.state === 'active' ? 'Automatic purchases active' : settings.policy?.delegationReady ? 'Continue to wallet approval' : 'Delegated actions unavailable'} trailing="→" wide busy={busy} disabled={!auth.walletAddress || plan.consent?.state === 'active' || !settings.policy?.delegationReady} onPress={() => void approve()} />
+      {!settings.policy?.delegationReady ? <Text variant="caption" tone="muted" style={styles.gap}>Automatic purchases are unavailable until the server-side Privy authorization key and constrained policy are configured.</Text> : null}
+      {status ? <Text variant="caption" tone={plan.consent?.state === 'active' ? 'accent' : 'danger'} style={styles.gap}>{status}</Text> : null}
     </SheetContent>
   );
 }
