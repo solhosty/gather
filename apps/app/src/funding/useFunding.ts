@@ -24,17 +24,17 @@ export function useFunding(enabled: boolean, walletAddress: string | undefined, 
       const token = await getAccessToken();
       const headers = { Authorization: `Bearer ${token}`, 'content-type': 'application/json' };
       const created = await fetch(`${apiBaseUrl}/v1/funding/attempts`, { method: 'POST', headers, body: JSON.stringify({ walletAddress, amountCents: 500 }) });
-      if (!created.ok) throw new Error('Roundup could not prepare the test funding confirmation.');
+      if (!created.ok) throw new Error('Roundup could not prepare the funding confirmation.');
       const attempt = await created.json() as { id: string };
       const confirmed = await fetch(`${apiBaseUrl}/v1/funding/attempts/confirm`, { method: 'POST', headers, body: JSON.stringify({ attemptId: attempt.id }) });
-      if (!confirmed.ok) throw new Error('Stripe could not confirm the test payment.');
+      if (!confirmed.ok) throw new Error('Stripe could not confirm the payment.');
       const reconciled = await fetch(`${apiBaseUrl}/v1/funding/attempts/reconcile`, { method: 'POST', headers, body: JSON.stringify({ attemptId: attempt.id }) });
-      if (!reconciled.ok) throw new Error('The confirmed test payment could not be reconciled.');
+      if (!reconciled.ok) throw new Error('The confirmed payment could not be reconciled.');
       const result = await reconciled.json() as { funding: Funding; attempt: FundingAttempt };
       setFunding(result.funding);
-      if (result.attempt.state !== 'reconciled') setError(result.attempt.failureMessage ?? 'Your test payment is still reconciling. Test USDC is not available yet.');
+      if (result.attempt.state !== 'reconciled') setError(result.attempt.failureMessage ?? 'Your payment is still reconciling. Funds are not available yet.');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'The test funding attempt could not be completed.');
+      setError(cause instanceof Error ? cause.message : 'The funding attempt could not be completed.');
     } finally { setLoading(false); }
   }, [getAccessToken, walletAddress]);
   return { error, fund, funding, loading, refresh: load };

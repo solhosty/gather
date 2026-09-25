@@ -75,11 +75,11 @@ export default function PlanScreen() {
             {isWide ? <Text style={styles.connectorLabel}>funds</Text> : null}
             <View style={!isWide && styles.connectorCircle}><Text tone="accent" style={styles.connectorArrow}>{isWide ? '→' : '↓'}</Text></View>
           </View>
-          <FlowItem glyph="W" tint={color.wallet} label="Purchases use" title="Roundup wallet" detail={`${formatCents(plan.testUsdcCents)} test USDC available`} />
+          <FlowItem glyph="W" tint={color.wallet} label="Purchases use" title="Roundup wallet" detail={`${formatCents(plan.testUsdcCents)} available`} />
         </View>
         <View style={[styles.flowActions, !isWide && styles.flowActionsNarrow]}>
-          <Button label={connection.connectionState === 'connecting' ? 'Opening Stripe…' : '+ Connect Stripe test account'} variant="secondary" busy={connection.connectionState === 'connecting'} onPress={() => void connection.connect()} />
-          <Button label="Add test funding" trailing="→" onPress={() => open('fund')} />
+          <Button label={connection.connectionState === 'connecting' ? 'Opening Stripe…' : '+ Connect bank'} variant="secondary" busy={connection.connectionState === 'connecting'} onPress={() => void connection.connect()} />
+          <Button label="Add funds" trailing="→" onPress={() => open('fund')} />
         </View>
         {connection.connectionError ? <Text variant="caption" tone="danger" style={styles.gap}>{connection.connectionError}</Text> : null}
       </Card>
@@ -98,7 +98,7 @@ export default function PlanScreen() {
             {free > 0 ? <Badge label={`${free}% free`} tone="warning" /> : <Text style={styles.statusMuted}>0% free</Text>}
           </View>
 
-          {mix.length === 0 ? <Text variant="caption" style={styles.emptyMix}>No stocks yet. Add a devnet stock mirror to start your mix.</Text> : null}
+          {mix.length === 0 ? <Text variant="caption" style={styles.emptyMix}>No stocks yet. Add a stock to start your mix.</Text> : null}
           {view === 'list' ? mix.map((leg, index) => (
             <View key={leg.symbol} style={[styles.row, !isWide && styles.rowNarrow, index === mix.length - 1 && styles.rowLast]}>
               <View style={[styles.stock, !isWide && styles.stockNarrow]}>
@@ -199,8 +199,8 @@ function StockPanel({ mix, onAdd }: { mix: MixLeg[]; onAdd: (symbol: MixLeg['sym
   return (
     <SheetContent eyebrow="Add to your mix" title="Choose an approved stock.">
       <View style={styles.search}><SearchField placeholder="Search a stock or ticker" value={query} onChangeText={setQuery} accessibilityLabel="Search a stock or ticker" /></View>
-      {options.map((mirror) => <OptionRow key={mirror.symbol} title={mirror.name} detail={`${mirror.token} · no-value devnet mirror`} trailing="+" onPress={() => onAdd(mirror.symbol)} />)}
-      {options.length === 0 ? <Text variant="caption" style={styles.gap}>Every approved devnet mirror matching your search is already in your mix.</Text> : null}
+      {options.map((mirror) => <OptionRow key={mirror.symbol} title={mirror.name} detail={mirror.token} trailing="+" onPress={() => onAdd(mirror.symbol)} />)}
+      {options.length === 0 ? <Text variant="caption" style={styles.gap}>Every matching stock is already in your mix.</Text> : null}
     </SheetContent>
   );
 }

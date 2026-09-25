@@ -16,13 +16,13 @@ export function FundDialog() {
   const [swapNote, setSwapNote] = useState(false);
   const latest = funding.funding?.attempts[0];
   return (
-    <SheetContent eyebrow="Fund your wallet" title="Add test USDC your way.">
-      <OptionRow title="Buy test USDC" detail="$5.00 Stripe test-mode payment · no real card is charged" onPress={() => open('fundConfirm')} />
+    <SheetContent eyebrow="Fund your wallet" title="Add funds your way.">
+      <OptionRow title="Add funds" detail="$5.00 payment" onPress={() => open('fundConfirm')} />
       <OptionRow title="Swap an asset" detail="Use a connected Solana wallet" onPress={() => setSwapNote(true)} />
-      <OptionRow title="Receive USDC" detail="Copy your devnet wallet address" onPress={() => open('receive')} />
-      {swapNote ? <View style={styles.gap}><NotSetUp milestone="devnet adapter">Swaps need tracked external wallets and the devnet execution adapter.</NotSetUp></View> : null}
+      <OptionRow title="Receive USDC" detail="Copy your wallet address" onPress={() => open('receive')} />
+      {swapNote ? <View style={styles.gap}><NotSetUp milestone="swaps">Swaps need tracked external wallets and an execution adapter.</NotSetUp></View> : null}
       <View style={styles.summary}>
-        <Text variant="caption">Test USDC available</Text>
+        <Text variant="caption">Available to invest</Text>
         <Text style={styles.summaryValue}>{formatCents(funding.funding?.availableTestUsdcCents ?? 0)}</Text>
       </View>
       {latest ? <Text variant="caption">Latest funding: {latest.state.replaceAll('_', ' ')} · {formatCents(latest.amountCents)} · no roundup entry created</Text> : null}
@@ -48,17 +48,17 @@ export function FundConfirmDialog() {
 
   const done = submitted && !funding.loading;
   return (
-    <SheetContent eyebrow="Test-only funding" title={done && !funding.error ? 'Test funding reconciled.' : 'Confirm $5.00 test funding?'}>
+    <SheetContent eyebrow="Funding" title={done && !funding.error ? 'Funding reconciled.' : 'Confirm $5.00 funding?'}>
       {done && !funding.error ? (
         <>
-          <Text variant="body">Stripe confirmed the test payment and the server credited {formatCents(latest?.amountCents ?? 500)} of test USDC to your Roundup wallet. No roundup entry was created.</Text>
+          <Text variant="body">Your payment was confirmed and {formatCents(latest?.amountCents ?? 500)} is available in your Roundup wallet. No roundup entry was created.</Text>
           <Button label="Done" wide style={styles.gap} onPress={dismiss} />
         </>
       ) : (
         <>
-          <Text variant="body">This submits a Stripe test-mode payment with a Stripe test card. It does not charge a real card, mint USDC through Stripe, or create a roundup entry. Test USDC is credited only after server reconciliation.</Text>
+          <Text variant="body">Your funding is available after server reconciliation. No roundup entry is created.</Text>
           {funding.error && submitted ? <Text variant="caption" tone="danger" style={styles.gap}>{funding.error}</Text> : null}
-          <Button label="Confirm test funding" trailing="→" wide busy={funding.loading} disabled={!auth.walletAddress} style={styles.gap} onPress={() => void confirm()} />
+          <Button label="Confirm funding" trailing="→" wide busy={funding.loading} disabled={!auth.walletAddress} style={styles.gap} onPress={() => void confirm()} />
           <Button label="Cancel" variant="text" wide style={styles.cancel} onPress={() => { setSubmitted(false); open('fund'); }} />
         </>
       )}
@@ -71,10 +71,10 @@ export function ReceiveDialog() {
   const [status, setStatus] = useState<string>();
   return (
     <SheetContent eyebrow="Receive USDC" title="Your Roundup wallet.">
-      <Text variant="body">Send only Solana devnet test tokens to this address.</Text>
+      <Text variant="body">Use this address to receive funds.</Text>
       <View style={styles.address}><Text selectable style={styles.addressText}>{auth.walletAddress ?? 'Creating your wallet…'}</Text></View>
       <Button label={status ?? 'Copy address'} wide disabled={!auth.walletAddress} onPress={() => { if (auth.walletAddress) void copyText(auth.walletAddress).then(setStatus).catch(() => setStatus('Copy failed')); }} />
-      <View style={styles.gap}><NotSetUp milestone="devnet adapter">Received devnet tokens are not read into your balance yet. The balance shown today is a server-side test-USDC credit.</NotSetUp></View>
+      <View style={styles.gap}><NotSetUp milestone="wallet tracking">Received assets are not read into your balance yet.</NotSetUp></View>
     </SheetContent>
   );
 }
@@ -87,8 +87,8 @@ export function RoundupsDialog() {
     <SheetContent eyebrow="Roundup details" title={plan.ready ? `${total} is ready to invest.` : `${total} collected so far.`}>
       <Text variant="body">
         {plan.readyCount
-          ? `It comes from ${plan.readyCount} posted test ${plan.readyCount === 1 ? 'purchase' : 'purchases'}. ${plan.ready ? `The batch triggered at ${formatCents(plan.limits.minimumCents)} and keeps collecting roundups.` : `A batch starts at the ${formatCents(plan.limits.minimumCents)} minimum.`}`
-          : 'No roundups are waiting. Posted purchases from a connected Stripe test account add to this ledger.'}
+          ? `It comes from ${plan.readyCount} posted ${plan.readyCount === 1 ? 'purchase' : 'purchases'}. ${plan.ready ? `The batch triggered at ${formatCents(plan.limits.minimumCents)} and keeps collecting roundups.` : `A batch starts at the ${formatCents(plan.limits.minimumCents)} minimum.`}`
+          : 'No roundups are waiting. Posted purchases from a connected account add to this ledger.'}
       </Text>
       <Button label="View every purchase" variant="secondary" wide style={styles.gap} onPress={() => { close(); router.navigate('/activity'); }} />
     </SheetContent>
@@ -121,7 +121,7 @@ export function ReviewDialog() {
         <View style={styles.target}><Text variant="caption">Choose a target mix on the Plan tab to see the suggested purchase.</Text></View>
       )}
       <Button label="Continue to quote" trailing="→" wide onPress={() => setContinued(true)} />
-      {continued ? <View style={styles.gap}><NotSetUp milestone="devnet adapter">Quotes and devnet allocation arrive with the Solana devnet execution adapter. Nothing was purchased.</NotSetUp></View> : null}
+      {continued ? <View style={styles.gap}><NotSetUp milestone="allocation">Quotes and allocation are not available yet. Nothing was purchased.</NotSetUp></View> : null}
     </SheetContent>
   );
 }
@@ -131,14 +131,14 @@ export function ApprovalDialog() {
   const [continued, setContinued] = useState(false);
   const assets = plan.mix.filter((leg) => leg.percent > 0).map((leg) => mirrorName(leg.symbol));
   const items = [
-    assets.length ? `${assets.join(', ')} devnet mirrors only` : 'No assets yet · choose a target mix first',
+    assets.length ? assets.join(', ') : 'No assets yet · choose a target mix first',
     `Up to ${formatCents(plan.limits.dailyCapCents)}/day · ${formatCents(plan.limits.weeklyCapCents)}/week`,
     'Expiry is set when you approve the wallet signer',
     'Pause or revoke anytime',
   ];
   return (
     <SheetContent eyebrow="Approve auto-invest policy" title="You stay in control.">
-      <Text variant="body">Roundups from eligible posted purchases add to your ledger. When it reaches {formatCents(plan.limits.minimumCents)} and test USDC is available, the policy can buy the devnet mirror furthest below your target mix.</Text>
+      <Text variant="body">Roundups from eligible posted purchases add to your ledger. When it reaches {formatCents(plan.limits.minimumCents)} and funds are available, the policy can buy the stock furthest below your target mix.</Text>
       <View style={styles.approval}>
         {items.map((item) => <Text key={item} style={styles.approvalItem}><Text tone="accent" style={styles.check}>✓  </Text>{item}</Text>)}
       </View>

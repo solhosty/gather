@@ -5,8 +5,10 @@ import { completeFinancialConnection, createFinancialConnection, createStripeAda
 import { issueWalletChallenge, verifyWalletChallenge } from './walletOwnership';
 import { exportAccountData, readPolicy, readProfile, savePolicy, updateProfile } from './account';
 import { confirmFundingAttempt, createFundingAttempt, readFunding, reconcileFundingAttempt } from './funding';
+import { createCliDevnetAdapter, createExecution, readExecutions, reconcileExecution, type DevnetExecutionAdapter } from './execution';
+import { createTwelveDataAdapter, readPortfolioHistory, readReferenceMarketPrices, type MarketDataAdapter, type PortfolioHistoryRange } from './marketData';
 
-type AppOptions = { sql?: Database; verifyToken?: TokenVerifier; stripe?: StripeAdapter; webhookSecret?: string };
+type AppOptions = { sql?: Database; verifyToken?: TokenVerifier; stripe?: StripeAdapter; webhookSecret?: string; execution?: DevnetExecutionAdapter; marketData?: MarketDataAdapter };
 
 const corsHeaders = {
   'access-control-allow-headers': 'authorization, content-type, idempotency-key',
@@ -40,7 +42,7 @@ function requirePositiveCents(value: unknown) {
   return value as number;
 }
 
-export function createApp({ sql = openDatabase(), verifyToken = createPrivyTokenVerifier(), stripe = createStripeAdapter(), webhookSecret }: AppOptions = {}) {
+export function createApp({ sql = openDatabase(), verifyToken = createPrivyTokenVerifier(), stripe = createStripeAdapter(), webhookSecret, execution = createCliDevnetAdapter(), marketData = createTwelveDataAdapter() }: AppOptions = {}) {
   return {
     async fetch(request: Request) {
       if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
@@ -55,6 +57,13 @@ export function createApp({ sql = openDatabase(), verifyToken = createPrivyToken
         const user = await requestUser(request, sql, verifyToken);
         if (request.method === 'GET' && url.pathname === '/v1/ledger') return json(await readLedger(sql, user.id));
         if (request.method === 'GET' && url.pathname === '/v1/funding') return json(await readFunding(sql, user.id));
+        if (request.method === 'GET' && url.pathname === '/v1/executions') return json(await readExecutions(sql, user.id));
+        if (request.method === 'GET' && url.pathname === '/v1/reference-market-prices') return json(await readReferenceMarketPrices(sql, marketData));
+        if (request.method === 'GET' && url.pathname === '/v1/portfolio-history') {
+          const range = url.searchParams.get('range');
+          if (range !== '1D' && range !== '1W' && range !== '1M' && range !== '1Y' && range !== 'ALL') return json({ error: 'range must be 1D, 1W, 1M, 1Y, or ALL.' }, 400);
+          return json(await readPortfolioHistory(sql, user.id, range as PortfolioHistoryRange, marketData));
+        }
         if (request.method === 'GET' && url.pathname === '/v1/stripe/financial-connections') return json(await readFinancialConnections(sql, user.id));
         if (request.method === 'GET' && url.pathname === '/v1/profile') return json(await readProfile(sql, user.id));
         if (request.method === 'PUT' && url.pathname === '/v1/profile') return json(await updateProfile(sql, user.id, await request.json()));
@@ -72,6 +81,15 @@ export function createApp({ sql = openDatabase(), verifyToken = createPrivyToken
         if (request.method === 'POST' && url.pathname === '/v1/funding/attempts/reconcile') {
           const body = await request.json();
           return json(await reconcileFundingAttempt(sql, user.id, requireString(body.attemptId, 'attemptId'), stripe));
+        }
+        if (request.method === 'POST' && url.pathname === '/v1/executions') {
+          const idempotencyKey = request.headers.get('idempotency-key');
+          if (!idempotencyKey) return json({ error: 'Idempotency-Key is required.' }, 400);
+          return json(await createExecution(sql, user.id, await request.json(), idempotencyKey, execution), 201);
+        }
+        if (request.method === 'POST' && url.pathname === '/v1/executions/reconcile') {
+          const body = await request.json();
+          return json(await reconcileExecution(sql, user.id, requireString(body.receiptId, 'receiptId'), execution));
         }
         if (request.method === 'POST' && url.pathname === '/v1/source-events') {
           const body = await request.json();

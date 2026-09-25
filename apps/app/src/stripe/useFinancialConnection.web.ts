@@ -23,7 +23,7 @@ export function useFinancialConnection(getAccessToken: () => Promise<string | nu
       const complete = await fetch(`${apiBaseUrl}/v1/stripe/financial-connections/complete`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ sessionId: session.sessionId }),
       });
-      if (!complete.ok) throw new Error('The connected test account could not be confirmed.');
+      if (!complete.ok) throw new Error('The connected account could not be confirmed.');
       setState('connected');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The test connection could not be completed.');

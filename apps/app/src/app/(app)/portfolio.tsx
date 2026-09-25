@@ -1,26 +1,46 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { findMirror, type MixLeg } from '@roundup/domain/policy';
-import { Badge, Button, Card, EmptyState, SheetContent, SheetHost, Text, TextField, color, font, formatCents, raised, useLayout } from '@roundup/ui';
+import { Button, Card, EmptyState, SheetContent, SheetHost, Text, color, font, formatCents, raised, useLayout } from '@roundup/ui';
 import { useDialogs } from '../../dialogs/context';
 import { NotSetUp, StockTile } from '../../features/components';
 import { mirrorColor } from '../../features/format';
 import { usePlanSummary } from '../../features/usePlanSummary';
+import { useAccount } from '../../account/AccountProvider';
+import { useExecutions } from '../../execution/useExecutions';
+import { useReferenceMarketPrices, type ReferenceMarketQuote } from '../../marketData/useReferenceMarketPrices';
+import { referenceValueCents } from '../../marketData/referenceValue';
 import { Screen } from '../../shell/Screen';
 
-type Panel = { kind: 'holding' | 'sell'; leg: MixLeg; index: number };
+type Panel = { leg: MixLeg; index: number };
 
 export default function PortfolioScreen() {
   const { open } = useDialogs();
   const { isWide } = useLayout();
   const plan = usePlanSummary();
+  const { auth } = useAccount();
+  const executions = useExecutions(Boolean(auth.user), auth.getAccessToken);
+  const marketData = useReferenceMarketPrices(Boolean(auth.user), auth.getAccessToken);
+  const latestReceipt = executions.receipts[0];
+  const heldUnits = latestReceipt?.state === 'confirmed'
+    ? Object.fromEntries(latestReceipt.receipt.legs.map((leg) => [leg.symbol, leg.units]))
+    : {} as Record<string, number>;
   const [panel, setPanel] = useState<Panel>();
+  const quoteFor = (symbol: string) => marketData.data?.quotes.find((quote) => quote.symbol === symbol);
+  const valueFor = (symbol: string, units: number) => {
+    const quote = quoteFor(symbol);
+    return quote && quote.status !== 'unavailable' ? referenceValueCents(units, quote.priceUsd) : undefined;
+  };
+  const heldLegs = Object.entries(heldUnits);
+  const referenceTotalCents = heldLegs.length && heldLegs.every(([symbol, units]) => valueFor(symbol, units) !== undefined)
+    ? heldLegs.reduce((sum, [symbol, units]) => sum + (valueFor(symbol, units) ?? 0), 0)
+    : undefined;
 
   return (
     <Screen kicker="Investments" title="Portfolio">
       <View style={[styles.tools, !isWide && styles.toolsNarrow]}>
-        <Text variant="body" tone="muted" style={styles.flex}>Holdings across your Roundup wallet. Every holding is a no-value devnet stock mirror.</Text>
+        <Text variant="body" tone="muted" style={styles.flex}>Targets and holdings across your Roundup wallet.</Text>
         <Pressable accessibilityRole="button" onPress={() => open('sources')} style={styles.pill}>
           <Text style={styles.pillText}>1 wallet <Text tone="accent" style={styles.pillText}>Manage</Text></Text>
         </Pressable>
@@ -28,27 +48,30 @@ export default function PortfolioScreen() {
 
       <Card variant="hero" style={styles.total}>
         <View>
-          <Text variant="eyebrow" tone="inverseMuted">Total value</Text>
-          <Text style={styles.totalValue}>{formatCents(0)}</Text>
+          <Text variant="eyebrow" tone="inverseMuted">Portfolio value</Text>
+          <Text style={styles.totalValue}>{referenceTotalCents === undefined ? '—' : formatCents(referenceTotalCents)}</Text>
         </View>
-        <Badge label="Devnet test assets" tone="inverse" />
       </Card>
 
       {plan.mix.length ? (
         <Card variant="flush">
           {plan.mix.map((leg, index) => {
             const mirror = findMirror(leg.symbol);
+            const units = heldUnits[leg.symbol] ?? 0;
+            const quote = quoteFor(leg.symbol);
+            const valueCents = valueFor(leg.symbol, units);
             return (
-              <Pressable key={leg.symbol} accessibilityRole="button" accessibilityLabel={`Open ${mirror?.name} position`} onPress={() => setPanel({ kind: 'holding', leg, index })}
+              <Pressable key={leg.symbol} accessibilityRole="button" accessibilityLabel={`View ${mirror?.name} target`} onPress={() => setPanel({ leg, index })}
                 style={({ hovered }: { pressed: boolean; hovered?: boolean }) => [styles.holding, index === plan.mix.length - 1 && styles.last, hovered && styles.hover]}>
                 <StockTile symbol={leg.symbol} tint={mirrorColor(index)} />
                 <View style={styles.flex}>
                   <Text style={styles.name}>{mirror?.name}</Text>
-                  <Text variant="caption">{mirror?.token} · not held yet · target {leg.percent}%</Text>
+                  <Text variant="caption">{mirror?.token} · {units ? `${units} shares` : 'not held yet'} · target {leg.percent}%</Text>
+                  <ReferencePrice quote={quote} />
                 </View>
                 <View style={styles.value}>
-                  <Text style={styles.valueText}>{formatCents(0)}</Text>
-                  <Text variant="caption">0 tokens</Text>
+                  <Text style={styles.valueText}>{valueCents === undefined ? '—' : formatCents(valueCents)}</Text>
+                  <Text variant="caption">{units} units</Text>
                 </View>
                 <View style={styles.trade}><Text tone="accent" style={styles.tradeGlyph}>⇄</Text></View>
               </Pressable>
@@ -56,63 +79,59 @@ export default function PortfolioScreen() {
           })}
         </Card>
       ) : (
-        <EmptyState eyebrow="No holdings yet" title="Your devnet holdings appear here." body="Choose a target mix on Plan. Purchases of no-value devnet stock mirrors start once the devnet execution adapter is set up.">
+        <EmptyState eyebrow="No holdings yet" title="Your holdings appear here." body="Choose a target mix on Plan to get started.">
           <Button label="Choose my mix" variant="secondary" onPress={() => router.navigate('/plan')} />
         </EmptyState>
       )}
-      <View style={styles.note}>
-        <NotSetUp milestone="devnet adapter">Devnet balances, prices, and receipts are not read yet. Values show $0.00 until the first reconciled devnet allocation.</NotSetUp>
-      </View>
+      {latestReceipt ? <ReceiptCard receipt={latestReceipt.receipt} state={latestReceipt.state} /> : <View style={styles.note}><NotSetUp milestone="allocation">No reconciled allocation receipt yet.</NotSetUp></View>}
+      {executions.error ? <Text variant="caption" tone="muted">{executions.error}</Text> : null}
 
       <SheetHost visible={Boolean(panel)} onClose={() => setPanel(undefined)}>
-        {panel?.kind === 'holding' ? <HoldingPanel panel={panel} onSell={() => setPanel({ ...panel, kind: 'sell' })} onActivity={() => { setPanel(undefined); router.navigate('/activity'); }} /> : null}
-        {panel?.kind === 'sell' ? <SellPanel panel={panel} /> : null}
+        {panel ? <HoldingPanel panel={panel} units={heldUnits[panel.leg.symbol] ?? 0} quote={quoteFor(panel.leg.symbol)} onActivity={() => { setPanel(undefined); router.navigate('/activity'); }} /> : null}
       </SheetHost>
+      {marketData.error ? <Text variant="caption" tone="muted">{marketData.error}</Text> : null}
     </Screen>
   );
 }
 
-function HoldingPanel({ panel, onSell, onActivity }: { panel: Panel; onSell: () => void; onActivity: () => void }) {
-  const mirror = findMirror(panel.leg.symbol);
+function ReceiptCard({ receipt, state }: { receipt: import('../../execution/useExecutions').ExecutionReceipt; state: string }) {
   return (
-    <SheetContent eyebrow={`${mirror?.token} · devnet stock mirror`} title={mirror?.name ?? panel.leg.symbol}>
+    <Card style={styles.receipt}>
+      <View style={styles.receiptHeading}><View><Text variant="eyebrow" tone="accent">Allocation receipt</Text><Text style={styles.receiptTitle}>{state === 'confirmed' ? 'Confirmed' : 'Awaiting confirmation'}</Text></View></View>
+      <Text variant="caption" style={styles.address}>Wallet {receipt.walletAddress}</Text>
+      {receipt.legs.map((leg) => <Pressable key={leg.signature} accessibilityRole="link" accessibilityLabel={`Open ${leg.symbol} transaction`} onPress={() => void Linking.openURL(leg.explorerUrl)} style={styles.receiptLeg}><Text style={styles.name}>{leg.symbol} · {leg.units} shares</Text><Text variant="caption" tone="accent">View transaction ↗</Text></Pressable>)}
+    </Card>
+  );
+}
+
+function HoldingPanel({ panel, units, quote, onActivity }: { panel: Panel; units: number; quote: ReferenceMarketQuote | { status: 'unavailable'; error: string } | undefined; onActivity: () => void }) {
+  const mirror = findMirror(panel.leg.symbol);
+  const valueCents = quote && quote.status !== 'unavailable' ? referenceValueCents(units, quote.priceUsd) : undefined;
+  return (
+    <SheetContent eyebrow={mirror?.token ?? panel.leg.symbol} title={`${mirror?.name ?? panel.leg.symbol} target`}>
       <View style={styles.position}>
-        <Summary label="Position value" value={formatCents(0)} />
-        <Summary label="Held" value="0 tokens" />
+        <Summary label="Portfolio value" value={valueCents === undefined ? '—' : formatCents(valueCents)} />
+        <Summary label="Held" value={`${units} shares`} />
         <Summary label="Target weight" value={`${panel.leg.percent}%`} />
+        <Summary label="Equity reference" value={referenceValue(quote)} />
       </View>
-      <View style={styles.actions}>
-        <Button label="View activity" variant="text" onPress={onActivity} />
-        <Button label="Sell for USDC" trailing="→" onPress={onSell} />
-      </View>
+      <ReferencePrice quote={quote} expanded />
+      <NotSetUp milestone="manual allocation">This target is read-only.</NotSetUp>
+      <View style={styles.actions}><Button label="View activity" variant="text" onPress={onActivity} /></View>
     </SheetContent>
   );
 }
 
-function SellPanel({ panel }: { panel: Panel }) {
-  const mirror = findMirror(panel.leg.symbol);
-  const [amount, setAmount] = useState('0');
-  const [reviewed, setReviewed] = useState(false);
-  return (
-    <SheetContent eyebrow="Sell for USDC" title={`Sell ${mirror?.name}`}>
-      <Text variant="caption">Choose an amount. You review a fresh route and sign before anything moves.</Text>
-      <View style={styles.sellBox}>
-        <Text variant="caption" style={styles.flex}>Amount to sell</Text>
-        <TextField value={amount} onChangeText={setAmount} inputMode="decimal" keyboardType="decimal-pad" accessibilityLabel="Amount to sell" style={styles.sellInput} />
-        <Text variant="caption">tokens</Text>
-      </View>
-      <View style={styles.quick}>
-        {['25%', '50%', 'Max'].map((label) => <Button key={label} label={label} variant="secondary" onPress={() => setAmount('0')} style={styles.quickButton} />)}
-      </View>
-      <View style={styles.quote}>
-        <Text variant="caption">Estimated receive</Text>
-        <Text style={styles.quoteValue}>— test USDC</Text>
-        <Text variant="caption">You hold 0 tokens · route, fee, and price impact appear before signing</Text>
-      </View>
-      <Button label="Review route" trailing="→" wide onPress={() => setReviewed(true)} />
-      {reviewed ? <View style={styles.note}><NotSetUp milestone="devnet adapter">Sell routes need devnet holdings and the execution adapter. Nothing was sold.</NotSetUp></View> : null}
-    </SheetContent>
-  );
+function referenceValue(quote: ReferenceMarketQuote | { status: 'unavailable'; error: string } | undefined) {
+  if (!quote || quote.status === 'unavailable') return 'Unavailable';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(Number(quote.priceUsd));
+}
+
+function ReferencePrice({ quote, expanded = false }: { quote: ReferenceMarketQuote | { status: 'unavailable'; error: string } | undefined; expanded?: boolean }) {
+  if (!quote) return <Text variant="caption" tone="muted">Loading equity reference…</Text>;
+  if (quote.status === 'unavailable') return <Text variant="caption" tone="muted">Equity reference unavailable</Text>;
+  const marketState = quote.marketOpen ? 'Market open' : 'Market closed';
+  return <Text variant="caption" tone={quote.status === 'stale' ? 'muted' : 'accent'}>{expanded ? 'Reference market price ' : ''}{referenceValue(quote)} · {marketState}{quote.status === 'stale' ? ' · refresh delayed' : ''}</Text>;
 }
 
 function Summary({ label, value }: { label: string; value: string }) {
@@ -136,14 +155,13 @@ const styles = StyleSheet.create({
   trade: { alignItems: 'center', backgroundColor: '#FFFFFF', borderColor: color.outline, borderRadius: 8, borderWidth: 2, height: 32, justifyContent: 'center', marginLeft: 7, width: 32, ...raised('button') },
   tradeGlyph: { fontSize: 15, fontWeight: '700' },
   note: { marginTop: 14 },
+  receipt: { gap: 10, marginTop: 14, padding: 16 },
+  receiptHeading: { alignItems: 'flex-start', flexDirection: 'row', gap: 12, justifyContent: 'space-between' },
+  receiptTitle: { fontSize: 15, fontWeight: '700', marginTop: 4 },
+  address: { fontFamily: font.mono },
+  receiptLeg: { alignItems: 'center', backgroundColor: '#F7FAF7', borderRadius: 8, flexDirection: 'row', justifyContent: 'space-between', padding: 10 },
   position: { borderBottomColor: color.lineSubtle, borderBottomWidth: 1, borderTopColor: color.lineSubtle, borderTopWidth: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 18, paddingVertical: 15 },
   summary: { flexBasis: 110, flexGrow: 1, gap: 5 },
   summaryValue: { fontSize: 14, fontWeight: '600' },
   actions: { alignItems: 'center', flexDirection: 'row', gap: 16, justifyContent: 'flex-end', paddingTop: 4 },
-  sellBox: { alignItems: 'center', borderColor: color.lineSubtle, borderRadius: 9, borderWidth: 1.5, flexDirection: 'row', gap: 6, marginTop: 18, padding: 11 },
-  sellInput: { fontSize: 16, fontWeight: '600', paddingVertical: 6, textAlign: 'right', width: 85 },
-  quick: { flexDirection: 'row', gap: 6, marginTop: 10 },
-  quickButton: { minHeight: 32, paddingHorizontal: 10, paddingVertical: 5 },
-  quote: { backgroundColor: '#F1F6EF', borderRadius: 9, gap: 4, marginVertical: 14, padding: 13 },
-  quoteValue: { fontSize: 18, fontWeight: '700' },
 });

@@ -62,7 +62,7 @@ export async function readLedger(sql: Database, userId: string) {
     FROM roundup_entries AS entry
     JOIN source_events AS source ON source.id = entry.source_event_id
     LEFT JOIN stripe_financial_transactions AS stripe ON stripe.source_event_id = source.id
-    WHERE entry.user_id = ${userId}
+    WHERE entry.user_id = ${userId} AND entry.amount_cents > 0
     ORDER BY source.occurred_at DESC, entry.created_at DESC
   `;
   return {

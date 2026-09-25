@@ -39,7 +39,6 @@ function SidebarBrand() {
   return (
     <View style={styles.brandBlock}>
       <Brand />
-      <Text variant="eyebrow" style={styles.sidebarEyebrow}>Test mode · no real funds</Text>
     </View>
   );
 }
@@ -109,7 +108,6 @@ const styles = StyleSheet.create({
   brandMark: { alignItems: 'center', backgroundColor: color.accent, borderColor: '#123C2B', borderRadius: 8, borderWidth: 1.5, boxShadow: '2px 2px 0px #B8D1C3', height: 27, justifyContent: 'center', transform: [{ rotate: '-1deg' }], width: 27 },
   brandMarkText: { color: color.onAccent, fontFamily: font.display, fontSize: 14, fontWeight: '700' },
   brandName: { color: color.ink, fontFamily: font.display, fontSize: 22, fontWeight: '700', letterSpacing: -0.9 },
-  sidebarEyebrow: { marginBottom: 6, marginHorizontal: 12, marginTop: 24 },
   navItem: { alignItems: 'center', borderColor: 'transparent', borderRadius: 9, borderWidth: 1.5, flexDirection: 'row', gap: 11, paddingHorizontal: 12, paddingVertical: 9 },
   tabItem: { alignItems: 'center', borderColor: 'transparent', borderRadius: 11, borderWidth: 1.5, flex: 1, justifyContent: 'center', paddingVertical: 9 },
   navHover: { backgroundColor: color.soft },

@@ -3,11 +3,11 @@ import { assertCents } from './ledger';
 // Devnet stock mirrors are no-value test tokens. They are never xStocks, real
 // shares, or Backed assets; minting happens in the devnet execution milestone.
 export const devnetMirrorCatalog = [
-  { symbol: 'AAPL', name: 'Apple', token: 'AAPL Devnet Demo' },
-  { symbol: 'MSFT', name: 'Microsoft', token: 'MSFT Devnet Demo' },
-  { symbol: 'NVDA', name: 'Nvidia', token: 'NVDA Devnet Demo' },
-  { symbol: 'GOOGL', name: 'Alphabet', token: 'GOOGL Devnet Demo' },
-  { symbol: 'AMZN', name: 'Amazon', token: 'AMZN Devnet Demo' },
+  { symbol: 'AAPL', name: 'Apple', token: 'AAPL' },
+  { symbol: 'MSFT', name: 'Microsoft', token: 'MSFT' },
+  { symbol: 'NVDA', name: 'Nvidia', token: 'NVDA' },
+  { symbol: 'GOOGL', name: 'Alphabet', token: 'GOOGL' },
+  { symbol: 'AMZN', name: 'Amazon', token: 'AMZN' },
 ] as const;
 
 export type MirrorSymbol = (typeof devnetMirrorCatalog)[number]['symbol'];

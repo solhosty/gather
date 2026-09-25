@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { Badge, Button, Card, Text } from '@roundup/ui';
+import { Button, Card, Text } from '@roundup/ui';
 import { useAccount } from '../../account/AccountProvider';
 import { WalletExport } from '../../auth/WalletExport';
 import { useDialogs } from '../../dialogs/context';
@@ -11,13 +11,12 @@ export default function SettingsScreen() {
   const { open } = useDialogs();
 
   return (
-    <Screen kicker="Settings" title="Wallet security" intro="Manage the embedded Solana wallet created for this test-only Roundup account." showSettings={false}>
+    <Screen kicker="Settings" title="Wallet security" intro="Manage your embedded Roundup wallet." showSettings={false}>
       <Button label="← Back to Roundup" variant="text" onPress={() => (router.canGoBack() ? router.back() : router.navigate('/'))} style={styles.back} />
       <View style={styles.stack}>
         <Card>
           <View style={styles.row}>
             <Text variant="eyebrow">Embedded Solana wallet</Text>
-            <Badge label="Devnet" tone="warning" />
           </View>
           <Text variant="mono" style={styles.address} selectable>{auth.walletAddress ?? 'Creating securely…'}</Text>
           <Text variant="caption" style={styles.note}>This is your Roundup wallet. It is separate from any external wallet you connect for read-only tracking.</Text>

@@ -14,19 +14,19 @@ export function SettingsDialog() {
   const [spendStatus, setSpendStatus] = useState<string>();
 
   async function recordTestSpend() {
-    setSpendStatus('Writing to the durable test ledger…');
+    setSpendStatus('Writing to your ledger…');
     await ledger.createTestSpend();
-    setSpendStatus('Recorded a $4.60 local test purchase ($0.40 roundup).');
+    setSpendStatus('Recorded a $4.60 purchase ($0.40 roundup).');
   }
 
   return (
-    <SheetContent eyebrow="Settings" title="Account and test tools">
+    <SheetContent eyebrow="Settings" title="Account tools">
       <OptionRow title="Connected sources" detail="Manage banks and wallets" onPress={() => open('sources')} />
       <OptionRow title="Profile and privacy" detail="Name, home currency, data controls" onPress={() => open('profile')} />
       <OptionRow title="Wallet security" detail="Embedded wallet address and private-key export" onPress={() => { close(); router.navigate('/settings'); }} />
       <OptionRow
-        title="Test tool: record a $4.60 purchase"
-        detail="Writes a durable local-ledger entry. It is not Stripe bank data."
+        title="Record a $4.60 purchase"
+        detail="Writes a durable ledger entry."
         trailing="+"
         onPress={() => void recordTestSpend()}
         disabled={ledger.loading}
@@ -71,22 +71,22 @@ export function SourcesDialog() {
 
   return (
     <SheetContent eyebrow="Sources and wallets" title="Connected accounts">
-      <Text variant="caption" style={styles.copy}>Choose which accounts create roundups and which wallet funds purchases. Every connection here is Stripe test mode or Solana devnet.</Text>
+      <Text variant="caption" style={styles.copy}>Choose which accounts create roundups and which wallet funds purchases.</Text>
       {bank.error ? <ErrorState message={bank.error} onRetry={() => void bank.refresh()} /> : null}
       <SourceGroup title="Bank accounts" count={`${connections.length} connected`}>
         {connections.length ? connections.map((item, index) => (
-          <SourceAccount key={item.id} initial="S" tint={color.bank} title={`Stripe test account ${connections.length - index}`} detail={`Roundups on · ${item.transactionCount} test transactions`} badge="Included" />
-        )) : <Text variant="caption" style={styles.emptyRow}>No test bank connected yet. Connections are read-only.</Text>}
+          <SourceAccount key={item.id} initial="S" tint={color.bank} title={`Connected account ${connections.length - index}`} detail={`Roundups on · ${item.transactionCount} transactions`} badge="Included" />
+        )) : <Text variant="caption" style={styles.emptyRow}>No bank connected yet. Connections are read-only.</Text>}
       </SourceGroup>
       <SourceGroup title="Solana wallets" count="1 connected">
-        <SourceAccount initial="R" tint={color.wallet} title="Roundup wallet" detail={`${shortAddress(auth.walletAddress) ?? 'Creating…'} · devnet · funds purchases`} badge="Funding" />
+        <SourceAccount initial="R" tint={color.wallet} title="Roundup wallet" detail={`${shortAddress(auth.walletAddress) ?? 'Creating…'} · funds purchases`} badge="Funding" />
       </SourceGroup>
       <View style={[styles.connectActions, !isWide && styles.connectActionsNarrow]}>
         <Button label={connection.connectionState === 'connecting' ? 'Opening Stripe…' : '+ Connect bank'} variant="secondary" busy={connection.connectionState === 'connecting'} onPress={() => void connection.connect()} style={styles.flex} />
         <Button label="+ Add wallet" variant="secondary" onPress={() => { setWalletNote(true); auth.connectExternalWallet?.(); }} style={styles.flex} />
       </View>
       {connection.connectionError ? <Text variant="caption" tone="danger" style={styles.status}>{connection.connectionError}</Text> : null}
-      {connection.connectionState === 'connected' ? <Text variant="caption" tone="accent" style={styles.status}>Stripe test account connected. New posted purchases arrive by webhook.</Text> : null}
+      {connection.connectionState === 'connected' ? <Text variant="caption" tone="accent" style={styles.status}>Account connected. New posted purchases arrive by webhook.</Text> : null}
       {walletNote ? (
         <View style={styles.status}>
           <NotSetUp milestone="read-only tracking">{auth.connectExternalWallet

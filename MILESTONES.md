@@ -390,7 +390,7 @@ it must not imply that Stripe itself mints USDC.
 
 ## Milestone 6 — Product UI parity
 
-**Status:** In progress — web product UI is implemented and verified; iOS simulator and wide-desktop screenshot evidence are still outstanding
+**Status:** In progress — the iOS simulator product run is now verified; authenticated wide-desktop web evidence is still outstanding
 
 **Scope**
 
@@ -457,14 +457,34 @@ it must not imply that Stripe itself mints USDC.
   Stripe test sources). Functional run: added Apple to the mix, set 50% with
   the slider, saved as plan version 1, reloaded, and saw the saved mix on
   Plan and as a 50% zero-holding target on Portfolio; list/donut toggle works.
-- Remaining: the embedded browser pane captures only a ~768px surface, so
-  1440×900 desktop screenshots still need recording. iOS simulator check is
-  blocked on this machine (`xcrun simctl` unavailable); rebuild the dev client
-  with the new Metro config and inspect every tab and dialog on iPhone.
+- Verification update — 2026-09-24:
+  - Fixed TypeScript configuration so generated `apps/app/dist` output is
+    excluded from the app program; a web export can no longer leave typecheck
+    pointing at stale hashed bundles.
+  - Fixed the persisted-ledger display boundary: historical zero-cent entries
+    remain retained in the audit database but are not returned as customer
+    roundups. Added database integration coverage for that legacy case.
+  - Removed the zero-holding `Sell for USDC` affordance. Portfolio targets are
+    now explicitly read-only until the M7 devnet adapter supplies a reconciled
+    allocation and receipt.
+  - Passed: `bun test packages/domain apps/api` (13 tests, 72 assertions),
+    `bun test` in `apps/app` (4 tests), `bun run typecheck` in `apps/app`,
+    `bun run typecheck` in `packages/ui`, `bunx expo lint`, and
+    `bunx expo export --platform web`.
+  - Passed iOS simulator run on iPhone 17 Pro (iOS 26.5) after reloading the
+    current development bundle: Home, Activity, Portfolio target detail,
+    Plan, and the blocked delegated-signer flow render persisted `$0.40`
+    roundup and `$5.00` test-USDC data without stale fields, zero-cent rows,
+    a trade route, or real-asset claims.
+  - Remaining: record the authenticated Home, Activity, Portfolio, and Plan
+    web surfaces at 1440×900. The available embedded browser session was not
+    authenticated, while the separately open signed-in browser tab was not
+    attachable to this validation session; do not replace this with an
+    unauthenticated sign-in screenshot.
 
 ## Milestone 7 — Solana devnet assets and execution adapter
 
-**Status:** Not started
+**Status:** Complete — Token-2022 devnet mirrors, durable idempotent allocation, on-chain balance proof, and refreshed iOS receipt proof are complete
 
 **Scope**
 
@@ -502,6 +522,122 @@ it must not imply that Stripe itself mints USDC.
   stored only in the existing ignored `.env` and `.keys/` keypair file.
 - Confirmed via Solana CLI on devnet: `2 SOL`. No token minting or allocation
   transaction has been submitted yet.
+
+**Completion evidence — 2026-09-24**
+
+- Confirmed the project-owned devnet authority public address with
+  `solana-keygen pubkey .keys/roundup-devnet-authority.json` and its confirmed
+  2 SOL fee balance with `solana balance FWziaPT6GcDemM2MPKTGHi1skrMwDxKXo3L8My6jJ2kh --url devnet --commitment confirmed`.
+  The private key remains only in ignored `.env` and `.keys/` material.
+- Created five zero-decimal Token-2022 mints, each with explicit on-chain
+  `* Devnet Demo` metadata: AAPL
+  `ENwzdRCd2dWiXMuUzuLwp1JZRLdMLV5mA3f1C9rWP8Q4`, MSFT
+  `9BVUF52iLhZTWKwc9AVWzs3xmohWYFiJ72M4SaYYxShb`, NVDA
+  `GFEWgQJzzLpqbFfcT4igpgHWc7jUxydHsKHPx15gyr6G`, GOOGL
+  `9XKKnYLQP2umggZadMa1qWLknHtEvEcaQf3vmaz3Ekhw`, and AMZN
+  `AamsSyyN2QBn7YomjYtTMYD7YbFmhXyYcHac1DnksTfL`. These are permanent
+  no-value demo units, not xStocks, shares, Backed assets, USDC, or securities.
+- Applied migrations `006_devnet_execution.sql` and `007_devnet_mirror_catalog.sql`.
+  The server reserves reconciled test-USDC credits, records a durable
+  submission intent before an RPC call, and refuses to retry a possibly
+  partial batch. `bun test apps/api/src --timeout 30000` passed: seven tests,
+  including idempotent allocation, receipt confirmation, and uncertain-submit
+  non-duplication coverage. The final run passed nine tests, including
+  rejection of duplicate, negative, and over-100% target-mix inputs before a
+  credit can be reserved or a chain call made.
+- Real allocation proof: funded user wallet `CpWdi…Lqj7` received 20 AAPL
+  demo units in transaction
+  `3CpYMzJRswcdYzdjH8zTt417giWFcDQCGsmSdh3JZ4Cnuc3MgdTYfrkwAkbveu1WmZJYpo5gMKFtDAdhtuTrGMh8`
+  and 20 MSFT demo units in transaction
+  `2qEqMd28JKM6Hj2dRDKH4eoo51iqv8XzKjMnPnyB1SCZB6uu78MKaqgTtEXAxDDVymKFXBqDNak5hmod9XD6KiU2`.
+  Both confirmed through devnet RPC; `spl-token --program-2022 --url devnet
+  accounts --owner CpWdi…Lqj7 --output json` showed two initialized associated
+  accounts with 20 units each.
+- Passed client proof: reloaded the signed-in iPhone 17 Pro (iOS 26.5) dev
+  build, opened Portfolio, and observed the confirmed devnet receipt, wallet,
+  AAPL/MSFT transaction links, no-value-demo badge, and permanent disclosure.
+  The refreshed Home surface also reconciled the available test-USDC balance
+  from $5.00 to $4.60. `bun run typecheck`, `bun test`, `bunx expo lint`, and
+  `bunx expo export --platform web` passed in `apps/app`.
+- Final correction check: after a full development-bundle refresh, Home showed
+  `40 no-value devnet units confirmed`; the AAPL detail showed `20 demo units`
+  and kept the target read-only with no sell route. The M7 API remained
+  available on port 3000 and the Expo dev server on port 8081.
+
+## Milestone 7.5 — Reference market data and display-only valuation context
+
+**Status:** Complete — server-side reference quotes, persisted timestamps, and live simulator portfolio valuation are complete
+
+**Scope**
+
+- Fetch U.S. equity reference quotes only from a server-side provider adapter.
+  Provider credentials must never be bundled into Expo clients.
+- Store the provider, symbol, USD quote, source timestamp, market-session
+  state, and local fetch time. Use a short cache and make stale/unavailable
+  data explicit rather than inventing a current quote.
+- Associate an underlying equity reference with each project-owned mirror using
+  the private demo's one-unit/one-share display convention.
+- Show the resulting portfolio total and individual holding values.
+
+**Completion evidence**
+
+- A configured server-only provider key yields timestamped USD reference
+  quotes for the mirror catalog; a client receives only public quote fields and
+  cannot receive the credential.
+- Cached quotes are persisted, and a failed refresh is visibly stale or
+  unavailable rather than presented as fresh.
+- Rendered web or iOS proof shows the resulting portfolio total and holding
+  values from current reference prices.
+
+**Completion evidence — 2026-09-25**
+
+- Added server-only `TWELVE_DATA_API_KEY` configuration, migration
+  `008_reference_market_prices.sql`, and `GET /v1/reference-market-prices`.
+  It snapshots all five catalog symbols through the Twelve Data `/quote`
+  endpoint, including `provider`, USD `price`, source `asOf`, market-open
+  state, and fetch time. Snapshots have a 60-second cache; refresh failures
+  return the retained row as `stale`, or `unavailable` when none exists.
+- Verified the configured key without printing it: live AAPL quote returned
+  from Twelve Data on 2026-09-25 with a USD price, source timestamp, and
+  open-market state. A live database-backed refresh returned all five catalog
+  symbols as available.
+- Passed `bun test apps/api/src/marketData.test.ts` (2 pass, 0 fail, 4
+  expectations), `bun run typecheck`, `bunx expo lint`, and `git diff --check`.
+- Passed rendered iPhone 17 Pro (iOS 26.5) proof after an API restart loaded
+  the newly configured key: Portfolio displayed a live AAPL price and its
+  current holding value. The app's customer-facing copy is intentionally free
+  of demo/test/devnet qualifiers; the private-demo boundary is recorded only
+  in the README. API remains on port 3000 and Expo on port 8081.
+
+## Milestone 7.6 — Portfolio performance history
+
+**Status:** Complete — persisted reference-price history and a dynamic portfolio chart are ready for the recorded demo
+
+**Scope**
+
+- Backfill daily portfolio values from the server-side price provider for the
+  confirmed portfolio, not from a client-side fixture.
+- Give the Home chart distinct 1D, 1W, 1M, 1Y, and all-time views that redraw
+  from the selected window and update the matching performance copy.
+- Preserve the approved visual direction: lime line, subtle filled area, and
+  compact range controls in the Portfolio value hero.
+
+**Completion evidence — 2026-09-25**
+
+- Added `009_reference_market_history.sql`, a Twelve Data daily-history
+  adapter, persisted per-symbol closes, and authenticated
+  `GET /v1/portfolio-history?range=`. The server builds daily portfolio values
+  from the immutable confirmed allocation receipt and cached price history.
+- Added the native Home history hook and an Expo-compatible line/area chart.
+  It deliberately uses native views rather than SVG because the iOS demo
+  recorder renders the latter as an unsupported-component placeholder.
+- Passed the complete API suite (12 pass, 0 fail, 71 expectations), including
+  historical response normalization; app typecheck, app tests (6 pass, 0
+  fail), Expo lint, and `git diff --check` passed.
+- Rendered iPhone 17 Pro proof showed the default 1M line-and-area chart and
+  independently verified 1D, 1W, 1M, 1Y, and All controls. Each selection
+  changed the chart and its dollar/percentage window copy. API remains on
+  port 3000 and Expo on port 8081.
 
 ## Milestone 8 — Policy and automatic execution
 

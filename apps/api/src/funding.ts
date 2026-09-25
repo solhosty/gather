@@ -36,7 +36,7 @@ function toAttempt(row: FundingAttemptRow) {
 
 export async function readFunding(sql: Database, userId: string): Promise<FundingSummary> {
   const [balance] = await sql<{ available_cents: number }[]>`
-    SELECT COALESCE(SUM(amount_cents) FILTER (WHERE state = 'available'), 0)::integer AS available_cents
+    SELECT COALESCE(SUM(amount_cents - allocated_cents) FILTER (WHERE state = 'available'), 0)::integer AS available_cents
     FROM test_usdc_credits WHERE user_id = ${userId}
   `;
   const attempts = await sql<FundingAttemptRow[]>`

@@ -7,22 +7,44 @@ import { useDialogs } from '../../dialogs/context';
 import { RoundupRow } from '../../features/components';
 import { todayKicker } from '../../features/format';
 import { usePlanSummary } from '../../features/usePlanSummary';
+import { useExecutions } from '../../execution/useExecutions';
+import { useReferenceMarketPrices } from '../../marketData/useReferenceMarketPrices';
+import { referenceValueCents } from '../../marketData/referenceValue';
+import { usePortfolioHistory, type PortfolioHistoryRange } from '../../marketData/usePortfolioHistory';
 import { Screen } from '../../shell/Screen';
 
-const ranges = ['1D', '1W', '1M', '1Y', 'ALL'] as const;
-type Range = (typeof ranges)[number];
+const ranges: PortfolioHistoryRange[] = ['1D', '1W', '1M', '1Y', 'ALL'];
 
 export default function HomeScreen() {
-  const { ledger, bank, funding, settings } = useAccount();
+  const { auth, ledger, bank, funding, settings } = useAccount();
+  const executions = useExecutions(Boolean(auth.user), auth.getAccessToken);
+  const marketData = useReferenceMarketPrices(Boolean(auth.user), auth.getAccessToken);
   const { open } = useDialogs();
   const { isWide, isGrid } = useLayout();
   const plan = usePlanSummary();
-  const [range, setRange] = useState<Range>('1M');
+  const [range, setRange] = useState<PortfolioHistoryRange>('1M');
+  const history = usePortfolioHistory(Boolean(auth.user), range, auth.getAccessToken);
   const name = settings.profile?.displayName;
   const loading = !ledger.ledger && !ledger.error;
   const newInvestor = !loading && plan.entries.length === 0 && plan.bankCount === 0 && (funding.funding?.attempts.length ?? 0) === 0;
   const recent = plan.entries.slice(0, 3);
   const progress = plan.limits.minimumCents ? plan.pendingCents / plan.limits.minimumCents : 0;
+  const confirmedLegs = executions.receipts.find((item) => item.state === 'confirmed')?.receipt.legs ?? [];
+  const confirmedUnits = confirmedLegs.reduce((total, leg) => total + leg.units, 0);
+  const portfolioValueCents = confirmedLegs.length && confirmedLegs.every((leg) => {
+    const quote = marketData.data?.quotes.find((item) => item.symbol === leg.symbol);
+    return quote && quote.status !== 'unavailable' && referenceValueCents(leg.units, quote.priceUsd) !== undefined;
+  }) ? confirmedLegs.reduce((total, leg) => {
+    const quote = marketData.data?.quotes.find((item) => item.symbol === leg.symbol);
+    return total + (quote && quote.status !== 'unavailable' ? referenceValueCents(leg.units, quote.priceUsd) ?? 0 : 0);
+  }, 0) : undefined;
+  const historyPoints = history.data?.points.map((point) => point.valueCents) ?? [];
+  const historyChange = historyPoints.length > 1 ? ((historyPoints.at(-1)! - historyPoints[0]) / historyPoints[0]) * 100 : undefined;
+  const historyValueChange = historyPoints.length > 1 ? historyPoints.at(-1)! - historyPoints[0] : undefined;
+  const rangeLabel = range === '1D' ? 'today' : range === '1W' ? 'this week' : range === '1M' ? 'this month' : range === '1Y' ? 'this year' : 'all time';
+  const performanceLabel = historyChange === undefined || historyValueChange === undefined
+    ? (confirmedUnits ? `${confirmedUnits} shares owned` : 'No holdings yet')
+    : `${historyValueChange >= 0 ? '+' : ''}${formatCents(historyValueChange)} · ${historyChange >= 0 ? '+' : ''}${historyChange.toFixed(1)}% ${rangeLabel}`;
 
   return (
     <Screen kicker={todayKicker()} title={name ? `Welcome back, ${name}.` : 'Welcome back.'}>
@@ -34,12 +56,12 @@ export default function HomeScreen() {
           <Card variant="hero" style={[styles.hero, !isWide && styles.heroNarrow]}>
             <View>
               <Text variant="eyebrow" tone="inverseMuted">Portfolio value</Text>
-              <Text style={styles.heroValue}>{formatCents(0)}</Text>
-              <Text style={styles.heroChange}>No devnet holdings yet</Text>
+              <Text style={styles.heroValue}>{portfolioValueCents === undefined ? '—' : formatCents(portfolioValueCents)}</Text>
+              <Text style={styles.heroChange}>{performanceLabel}</Text>
             </View>
             <View style={[styles.chart, !isWide && styles.chartNarrow]}>
               <Segmented tone="hero" accessibilityLabel="Portfolio chart range" value={range} onChange={setRange} options={ranges.map((value) => ({ value, label: value === 'ALL' ? 'All' : value }))} />
-              <Sparkline empty={`No ${range === 'ALL' ? 'all-time' : range} performance yet · first devnet purchase starts the chart`} />
+              <Sparkline empty={history.error ?? `Loading ${range === 'ALL' ? 'all-time' : range} history…`} points={historyPoints} />
             </View>
           </Card>
 
@@ -50,7 +72,7 @@ export default function HomeScreen() {
               <Text variant="caption">See the {plan.readyCount} {plan.readyCount === 1 ? 'purchase' : 'purchases'} <Text tone="accent" style={styles.bold}>→</Text></Text>
             </PressableCard>
             <PressableCard style={[styles.stat, !isGrid && styles.statHalf]} onPress={() => open('fund')}>
-              <Text variant="eyebrow">Available test USDC</Text>
+              <Text variant="eyebrow">Available to invest</Text>
               <Text variant="figure" style={styles.statValue}>{formatCents(plan.testUsdcCents)}</Text>
               <Text variant="caption">Add or receive USDC <Text tone="accent" style={styles.bold}>→</Text></Text>
             </PressableCard>
@@ -111,7 +133,7 @@ export default function HomeScreen() {
           <Card variant="flush">
             {recent.length ? recent.map((entry, index) => <RoundupRow key={entry.id} entry={entry} last={index === recent.length - 1} />) : (
               <View style={styles.noActivity}>
-                <Text variant="caption">{bank.connections?.length ? 'Your Stripe test account is connected. Posted purchases with cents appear here after its next transaction refresh.' : 'No roundups yet. Connect a Stripe test account to start collecting.'}</Text>
+                <Text variant="caption">{bank.connections?.length ? 'Your account is connected. Posted purchases with cents appear here after its next transaction refresh.' : 'No roundups yet. Connect an account to start collecting.'}</Text>
               </View>
             )}
           </Card>

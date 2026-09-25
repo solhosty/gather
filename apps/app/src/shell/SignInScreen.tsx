@@ -1,6 +1,6 @@
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, Notice, Text, color } from '@roundup/ui';
+import { Button, Card, Text, color } from '@roundup/ui';
 import { useAccount } from '../account/AccountProvider';
 import { Brand } from './AppShell';
 
@@ -25,9 +25,8 @@ export function SignInScreen() {
         <Card style={styles.card}>
           <Text variant="eyebrow">Welcome to Roundup</Text>
           <Text variant="display">Turn everyday spending into a portfolio.</Text>
-          <Text variant="body">Sign in to create your personal Solana devnet wallet. Roundup rounds up eligible purchases and plans where each new dollar goes.</Text>
+          <Text variant="body">Sign in to create your personal Roundup wallet. Roundup rounds up eligible purchases and plans where each new dollar goes.</Text>
           <Button label={auth.oauthLoading ? 'Opening secure sign-in' : 'Continue with Google'} trailing="→" busy={auth.oauthLoading} onPress={() => void auth.login('google')} wide style={styles.button} />
-          <Notice label="Test mode">This demo uses Stripe test mode and Solana devnet only. No real money, bank data, or securities are involved. Apple and GitHub sign-in are not set up yet.</Notice>
         </Card>
       </View>
     </SafeAreaView>

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Badge, Text, color, layout, raised, useLayout } from '@roundup/ui';
+import { Text, color, layout, raised, useLayout } from '@roundup/ui';
 import { useAccount } from '../account/AccountProvider';
 import { useDialogs } from '../dialogs/context';
 
@@ -26,10 +26,7 @@ export function Screen({ kicker, title, intro, children, showSettings = true }: 
     >
       <View style={styles.header}>
         <View style={styles.headerCopy}>
-          <View style={styles.kickerRow}>
-            <Text variant="eyebrow">{kicker}</Text>
-            {!isWide ? <Badge label="Test mode" tone="warning" /> : null}
-          </View>
+          <View style={styles.kickerRow}><Text variant="eyebrow">{kicker}</Text></View>
           <Text variant="display" style={[styles.title, !isWide && styles.titleNarrow]}>{title}</Text>
         </View>
         {showSettings ? (

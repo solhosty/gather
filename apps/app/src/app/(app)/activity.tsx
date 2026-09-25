@@ -72,7 +72,7 @@ export default function ActivityScreen() {
       {ledger.error ? <ErrorState message={ledger.error} onRetry={() => void ledger.refresh()} /> : null}
       {!ledger.ledger && !ledger.error ? <LoadingState label="Loading activity" /> : null}
       {ledger.ledger && entries.length === 0 ? (
-        <EmptyState eyebrow="No activity yet" title="Roundups appear after posted purchases." body="Connect a Stripe test account from Plan or Settings. Only eligible posted merchant purchases with cents create a roundup." />
+        <EmptyState eyebrow="No activity yet" title="Roundups appear after posted purchases." body="Connect a bank from Plan or Settings. Only eligible posted merchant purchases with cents create a roundup." />
       ) : null}
       {entries.length > 0 && filtered.length === 0 ? (
         <EmptyState title="No purchases match." body="Try a different search or clear your filters.">
@@ -114,7 +114,7 @@ export default function ActivityScreen() {
           <View style={styles.list}>
             <ChoiceCard title="All sources" detail={`${entries.length} roundups`} selected={draft.source === 'all'} onPress={() => setDraft({ ...draft, source: 'all' })} />
             <ChoiceCard title="Stripe test bank" detail={`${counts.stripe} roundups`} selected={draft.source === 'stripe'} onPress={() => setDraft({ ...draft, source: 'stripe' })} />
-            <ChoiceCard title="Local test ledger" detail={`${counts.local} roundups`} selected={draft.source === 'local'} onPress={() => setDraft({ ...draft, source: 'local' })} />
+            <ChoiceCard title="Local ledger" detail={`${counts.local} roundups`} selected={draft.source === 'local'} onPress={() => setDraft({ ...draft, source: 'local' })} />
           </View>
         </View>
         <View style={styles.field}>

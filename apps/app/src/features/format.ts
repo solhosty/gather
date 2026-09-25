@@ -9,11 +9,11 @@ export function entrySource(entry: LedgerEntry): SourceKind {
 }
 
 export function sourceLabel(kind: SourceKind) {
-  return kind === 'stripe' ? 'Stripe test bank' : 'Local test ledger';
+  return kind === 'stripe' ? 'Connected bank' : 'Local ledger';
 }
 
 export function entryTitle(entry: LedgerEntry) {
-  return entry.description ?? 'Test purchase';
+  return entry.description ?? 'Purchase';
 }
 
 export function initial(text: string) {

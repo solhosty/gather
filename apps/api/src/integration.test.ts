@@ -47,12 +47,29 @@ maybeDescribe('PostgreSQL ledger integration', () => {
     const input = { source: 'm3-test', eventId: `purchase-${crypto.randomUUID()}`, amountCents: 460, occurredAt: new Date().toISOString() };
     const first = await recordSourceEvent(sql, userId, input, `first-${crypto.randomUUID()}`);
     const replay = await recordSourceEvent(sql, userId, input, `replay-${crypto.randomUUID()}`);
-    const ledger = await readLedger(sql, userId);
+    let ledger = await readLedger(sql, userId);
 
     expect(first.created).toBe(true);
     expect(replay.created).toBe(false);
     expect(ledger.pendingCents).toBe(40);
     expect(ledger.entries).toHaveLength(1);
+
+    // Older local fixtures could contain a no-op entry for a whole-dollar
+    // purchase. Retain it in the audit trail, but never present it as a
+    // roundup in the product ledger.
+    const wholeDollarEventId = `whole-dollar-${crypto.randomUUID()}`;
+    const [wholeDollarEvent] = await sql<{ id: string }[]>`
+      INSERT INTO source_events (user_id, source, external_event_id, occurred_at, amount_cents, normalized_payload, audit_source)
+      VALUES (${userId}, 'legacy-test', ${wholeDollarEventId}, ${new Date().toISOString()}, 10000, '{}'::jsonb, 'legacy-fixture')
+      RETURNING id
+    `;
+    await sql`
+      INSERT INTO roundup_entries (user_id, source_event_id, amount_cents, rule_version)
+      VALUES (${userId}, ${wholeDollarEvent.id}, 0, 'legacy-zero-entry')
+    `;
+    ledger = await readLedger(sql, userId);
+    expect(ledger.entries).toHaveLength(1);
+    expect(ledger.entries[0]).toMatchObject({ purchaseCents: 460, amountCents: 40, occurredAt: expect.any(Date) });
   });
 
   test('invalid, expired, and replayed ownership proofs never create an unproven tracked wallet', async () => {
